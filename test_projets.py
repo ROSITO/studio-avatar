@@ -13,7 +13,7 @@ class ProjetsTest(unittest.TestCase):
         self.patches=[patch.object(projets.montage,'analyser',self.analyser),patch.object(studio,'ICI',root),patch.object(studio,'TACHES',[]),patch.object(studio,'sauver',lambda:None),patch.object(studio,'resolution',lambda p:(64,64)),patch.object(studio,'apercu',lambda p:None),patch.object(studio,'ltx',self.ltx),patch.object(studio,'voix',self.voix),patch.object(studio,'musetalk',self.muse)]
         for p in self.patches:p.start()
         for d in studio.DOSSIERS+['taches']:(root/d).mkdir()
-        projets.installer(studio); self.root=root; self.generations=[]; self.voix_count=0
+        projets.installer(studio); self.root=root; self.generations=[]; self.voix_count=0; self.audios_a2v=[]; self.muse_count=0
         (root/'sources'/'avatar.png').write_bytes(b'photo test')
     def analyser(self,studio,t,p,tr):
         total=projets.montage.frames_blocs(p)[tr['gauche']]
@@ -22,13 +22,15 @@ class ProjetsTest(unittest.TestCase):
         for p in reversed(self.patches):p.stop()
         self.tmp.cleanup()
     def ff(self,args): subprocess.run(['ffmpeg','-v','error','-y',*map(str,args)],check=True)
-    def ltx(self,t,images,prompt,W,H,frames,seed,out):
+    def ltx(self,t,images,prompt,W,H,frames,seed,out,audio=None):
         self.generations.append((out.name,images,frames,seed))
+        if audio: self.audios_a2v.append((studio.duree(audio),frames/24))
         self.ff(['-f','lavfi','-i','color=c=blue:s=64x64:r=24','-frames:v',frames,'-c:v','libx264','-pix_fmt','yuv420p',out])
     def voix(self,t,texte,profil,langue,out):
         self.voix_count+=1
         self.ff(['-f','lavfi','-i','sine=frequency=440:sample_rate=44100','-t','1.25',out])
     def muse(self,t,video,audio,out,shift):
+        self.muse_count+=1
         self.ff(['-i',video,'-i',audio,'-map','0:v','-map','1:a','-c:v','copy','-c:a','aac','-shortest',out])
     def creer(self):return projets.creer(dict(avatar='avatar.png',voix='test',texte='[curious] Première phrase. Deuxième phrase. [laughs] Toujours curieux. [excited] Formidable ! [serious] Attention.'))
     def drain(self):
@@ -92,5 +94,34 @@ class ProjetsTest(unittest.TestCase):
         with self.assertRaises(ValueError):projets.modifier(pid,dict(action='supprimer',element=b['id']))
         # Double clic ne duplique pas une tâche.
         projets.lancer(pid,dict(action='clip',element=b['id'])); self.assertEqual(len(studio.TACHES),1)
+    def test_moteur_a2v_et_musetalk(self):
+        p=self.creer(); self.assertEqual(p['moteur'],'a2v')
+        projets.lancer(p['id'],dict(action='automatique')); self.drain(); p=projets.lire(p['id'])
+        # Clips et ponts parlants, chaque voix couvre toute la vidéo (silence ajouté), pas de MuseTalk.
+        self.assertEqual(len(self.audios_a2v),5); self.assertTrue(all(a>=v for a,v in self.audios_a2v))
+        self.assertEqual(self.muse_count,0); self.assertTrue(p['export'])
+        projets.modifier(p['id'],dict(action='moteur',moteur='musetalk')); p=projets.lire(p['id'])
+        self.assertFalse(any(projets.courant(b) for b in p['blocs']))
+        projets.lancer(p['id'],dict(action='automatique')); self.drain()
+        self.assertEqual(len(self.audios_a2v),5); self.assertEqual(self.muse_count,1)
+    def test_decoupe_bloc_long_aux_phrases(self):
+        phrase='Une phrase de trois secondes environ.'
+        p=projets.creer(dict(avatar='avatar.png',voix='test',texte='[serious] '+' '.join([phrase]*5)+' [excited] Court.'))
+        self.assertEqual([b['ton'] for b in p['blocs']],['serieux']*3+['enthousiaste'])
+        self.assertTrue(all(len(b['texte'])<=projets.BLOC_MAX*projets.CARACTERES_SECONDE for b in p['blocs']))
+        self.assertEqual(' '.join(b['texte'] for b in p['blocs'][:3]),' '.join([phrase]*5))
+        # Une phrase plus longue que le plafond n’est jamais coupée.
+        long='Une '+'très '*40+'longue phrase.'
+        self.assertEqual(projets.decouper(long),[long])
+    def test_controle_visage_optionnel(self):
+        p=self.creer(); b=p['blocs'][0]; scores=iter([.3,.25,.1])
+        with patch.object(projets,'visage',lambda t,v:next(scores)) as _:
+            projets.lancer(p['id'],dict(action='clip',element=b['id'])); self.drain()
+            self.assertEqual(len(self.generations),1)   # décoché par défaut : un seul essai
+            projets.modifier(p['id'],dict(action='controle_visage',actif=True)); p=projets.lire(p['id'])
+            self.assertTrue(projets.courant(p['blocs'][0]))   # cocher n’invalide rien
+            projets.lancer(p['id'],dict(action='clip',element=b['id'])); self.drain(); p=projets.lire(p['id'])
+        self.assertEqual(len(self.generations),4); self.assertEqual(p['blocs'][0]['visage'],.1)
+        self.assertEqual(p['blocs'][0]['seed'],self.generations[-1][3])
 
 if __name__=='__main__': unittest.main()

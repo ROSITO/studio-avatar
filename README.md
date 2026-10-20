@@ -6,11 +6,11 @@
 
 A local avatar-video studio with an editable, persistent timeline. Start with a photo
 and a tagged script, generate individual LTX mini-clips, then connect their poses
-with LTX transitions. Assemble and lip-sync only when you are ready.
+with LTX transitions. Assemble only when you are ready.
 
 **Experimental software.** The interface is currently in French. The generation
-recipe targets Apple Silicon and separately installed LTX-2-MLX, MuseTalk 1.5, and
-an optional VoiceStudio-compatible speech API. A complete GPU render is not part
+recipe targets Apple Silicon and separately installed LTX-2-MLX, optionally MuseTalk
+1.5, and an optional VoiceStudio-compatible speech API. A complete GPU render is not part
 of automated testing. No pretrained models, personal projects, voices, portraits,
 example videos, or private configuration are distributed.
 
@@ -23,10 +23,32 @@ Photo + tagged script
 [curious] clip A -> LTX transition A–B -> [excited] clip B -> transition B–C -> clip C
         |
         v
-Explicit assembly + MuseTalk lip-sync -> downloadable video
+Explicit assembly (+ MuseTalk lip-sync in that engine) -> downloadable video
 ```
 
+### Block engines
+
+Each project chooses its engine in the timeline (**Moteur des blocs**):
+
+- **a2v talking video** (default for new projects): `ltx-2-mlx a2v` animates the
+  photo directly from the block's speech, so lips follow the voice. Transitions are
+  generated the same way with the speech they carry. No MuseTalk pass at export.
+  a2v needs audio covering the whole clip (8k+1 frames at 24 fps): each speech
+  slice is automatically padded with silence (+0.2 s margin).
+- **Closed-mouth gestures + MuseTalk 1.5**: silent LTX gestures, then MuseTalk
+  lip-sync at export. Projects created before a2v keep this engine.
+
+Switching engine marks every clip and transition stale (audio is kept).
+
+**Face check** (optional, off by default): after each clip, `visage.py` measures how
+far the face moves (share of face width). Above 0.2 (tilted or turned head), the
+clip is redone with the next seed, up to 3 attempts; the steadiest one is kept.
+Requires OpenCV in `STUDIO_CV_PYTHON`.
+
 - One recognized TAG opens one block, even if it contains several sentences.
+  Long blocks are split at sentence boundaries into blocks of at most about
+  6 seconds (estimated at 14 characters per second), because the face drifts
+  over longer LTX passes. A single sentence is never cut.
 - Edit a block's text, intention, LTX direction, duration, and seed.
 - Regenerate only that block. Other clips and completed speech audio are retained.
 - Only the adjacent transitions become stale; distant transitions remain valid.
@@ -61,6 +83,24 @@ alignment. Adjusting a block's total duration can still trim speech or add silen
 this is separate from the integrated return, which never adds a pause. Clip-duration
 edits currently accept 0.5–20 seconds.
 
+## Create an avatar (FLUX)
+
+The **Créer un avatar** tab generates the avatar photo itself with
+[mflux](https://github.com/mflux-community/mflux): a description, up to 4 optional
+reference photos (face, outfit, setting, style) or an existing avatar as a starting
+point, and 1–4 variants per run. The animation pose is imposed (seated, facing the
+camera, head upright, mouth closed, hands resting low). **Utiliser comme avatar**
+copies a result into `sources/`.
+
+- **FLUX.2 Klein 4B** (default): Apache 2.0, distilled recipe (4 steps, 8-bit),
+  about 40 s per 768×1200 image on an M3 Pro, ~13 GB peak memory.
+- **FLUX 3 Image Klein MLX 8-bit** (option, **Modèles** page): FLUX Kommunity
+  License, **non-commercial**; a monetized video requires a BFL license. Slower.
+
+Set `STUDIO_MFLUX_BIN` to the folder holding `mflux-generate-flux2[-edit]` and
+`mflux-generate-flux3[-edit]`. Weights already installed elsewhere are detected via
+`STUDIO_IMAGE_MODELS_DIR` (`flux2/klein-4b`, `flux3/klein-mlx-8bit`).
+
 ## Start the interface
 
 Requirements: Python 3.10+, `ffmpeg`, and `ffprobe` on your PATH. The web server
@@ -82,10 +122,10 @@ The studio orchestrates external tools. Install the engines separately; model
 weights can then be downloaded explicitly from the **Modèles** page. Install each engine in its own environment, obtain
 its required models, and follow its upstream setup instructions and licenses.
 
-1. Install an [LTX-2-MLX](https://github.com/dgrauet/ltx-2-mlx) CLI supporting `generate`, `--image`, `--distilled`,
+1. Install an [LTX-2-MLX](https://github.com/dgrauet/ltx-2-mlx) CLI supporting `generate`, `a2v`, `--image`, `--distilled`,
    `--low-ram`, and the other flags used by `studio.ltx`.
 2. Put the expected LTX weights in `STUDIO_MODELS_DIR/ltx-2.3-q4/`.
-3. Install [MuseTalk](https://github.com/TMElyralab/MuseTalk), including its
+3. Optional (closed-mouth engine only): install [MuseTalk](https://github.com/TMElyralab/MuseTalk), including its
    `musetalkV15`, `sd-vae`, Whisper, and face-processing models. Configure its
    checkout and Python interpreter below. The local recipe was developed with the
    [musetalk-macos](https://github.com/huzp611/musetalk-macos) fork. `lancer_musetalk15.py` is a local adapter.
@@ -110,12 +150,12 @@ the default model directory is `~/.cache/studio-avatar/models`. See
 
 Once configured: **Nouvelle vidéo → Créer le projet → Mes projets**. Create the
 project first, generate selected clips/transitions, and finally choose
-**Assembler et synchroniser**. Previous exported videos remain under **Mes vidéos**.
+**Assembler** (**Assembler et synchroniser** with MuseTalk). Previous exported videos remain under **Mes vidéos**.
 
 ## Automatic generation and seeds
 
 In a project, **Tout générer automatiquement** runs all remaining clips and
-transitions, then assembles and lip-syncs the final video. It preserves ready
+transitions, then assembles the final video (with MuseTalk lip-sync in that engine). It preserves ready
 rushes. A single resumable orchestration task tracks the sequence, stops on the
 first failure/cancellation, and never leaves dependent export jobs running after
 a failure. Restarting automatic generation reuses completed outputs and audio.
@@ -214,7 +254,7 @@ python3 -m py_compile studio.py projets.py modeles.py lancer_musetalk15.py visag
 ```
 
 Tests create synthetic media in temporary directories and exercise real FFmpeg
-assembly. LTX, MuseTalk, and speech generation are replaced by test implementations;
+assembly. LTX, MuseTalk, mflux, and speech generation are replaced by test implementations;
 no model weights, personal assets, speech server, or GPU are needed. CI runs the
 same suite on Python 3.10 and 3.14.
 

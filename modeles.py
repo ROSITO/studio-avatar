@@ -24,6 +24,14 @@ class SansFuiteToken(urllib.request.HTTPRedirectHandler):
         if redirected and urllib.parse.urlparse(newurl).hostname!='huggingface.co': redirected.remove_header('Authorization')
         return redirected
 
+# Génération de portraits d'avatar (mflux). « detecter » : dossier déjà installé sous STUDIO_IMAGE_MODELS_DIR.
+CATALOGUE += [dict(id='flux2-klein4b',nom='FLUX.2 Klein 4B · distillé',role='image',ram=16,description='Portraits d’avatar et édition avec références · Apache 2.0, usage commercial libre · 4 étapes.',detecter='flux2/klein-4b',
+                   sources=[dict(repo='black-forest-labs/FLUX.2-klein-4B',include=['model_index.json','scheduler/*','text_encoder/*','tokenizer/*','transformer/*','vae/*','LICENSE*'],prefix='')],
+                   required=['model_index.json','transformer/diffusion_pytorch_model.safetensors','vae/diffusion_pytorch_model.safetensors','text_encoder/model.safetensors.index.json']),
+              dict(id='flux3-klein8',nom='FLUX 3 Image Klein · MLX 8 bits',role='image',ram=24,description='Meilleure qualité, jusqu’à 10 références · licence FLUX Kommunity NON COMMERCIALE (vidéo monétisée : licence BFL requise) · plus lent.',detecter='flux3/klein-mlx-8bit',
+                   sources=[dict(repo='cguldogan/flux3-klein-mlx-8bit',include=['transformer/*','text_encoder/*','vae/*','*.json','LICENSE*','NOTICE*'],prefix='')],
+                   required=['transformer/model.safetensors.index.json','text_encoder/model.safetensors.index.json','vae/model.safetensors.index.json'])]
+
 def ouvrir(url,headers=None):
     h={'User-Agent':'StudioAvatar-model-manager/1',**(headers or {})}
     token=os.environ.get('HF_TOKEN')
@@ -50,6 +58,7 @@ class Gestionnaire:
         self.s=studio; self.lock=threading.RLock(); self.cancel=threading.Event(); self.thread=None
         self.config_path=studio.ICI/'modeles.json'; self.etat_path=studio.ICI/'.modeles-etat.json'
         self.config=lire_json(self.config_path,dict(selection={'video':'ltx23-q4','texte':'gemma3','lipsync':'musetalk15'},locaux=[]))
+        self.config['selection'].setdefault('image','flux2-klein4b')
         self.etat=lire_json(self.etat_path,{})
         if self.etat.get('statut') in ('analyse','telechargement','verification'): self.etat['statut']='interrompu'
         self.plans=lire_json(studio.ICI/'.modeles-plans.json',{})
@@ -68,6 +77,9 @@ class Gestionnaire:
         if self.valid(e,target):return target
         if e['id']=='ltx23-q4':
             ancien=self.s.MODELES/'ltx-2.3-q4'
+            if self.valid(e,ancien):return ancien
+        if e.get('detecter') and getattr(self.s,'MODELES_IMAGE',None):
+            ancien=self.s.MODELES_IMAGE/e['detecter']
             if self.valid(e,ancien):return ancien
         if e['id']=='gemma3':
             cache=self.s.MODELES/'huggingface'/'hub'/'models--mlx-community--gemma-3-12b-it-4bit'/'snapshots'
@@ -89,7 +101,7 @@ class Gestionnaire:
             for e in self.entries():
                 p=self.path(e); plan=self.plans.get(e['id'])
                 entries.append(dict(id=e['id'],nom=e['nom'],role=e['role'],ram=e['ram'],description=e['description'],path=str(p),installe=self.valid(e,p),actif=self.config['selection'].get(e['role'])==e['id'],octets=plan.get('total') if plan else None,sources=[s['repo'] for s in e.get('sources',[])],local=bool(e.get('path'))))
-            return dict(catalogue=entries,selection=self.selection(),transfert=self.etat,voix_url=self.s.VOICESTUDIO,moteurs=dict(ltx=bool(shutil.which(str(self.s.LTX))),musetalk=self.muse_root.is_dir()),dossier=str(self.s.MODELES))
+            return dict(catalogue=entries,selection=self.selection(),transfert=self.etat,voix_url=self.s.VOICESTUDIO,moteurs=dict(ltx=bool(shutil.which(str(self.s.LTX))),musetalk=self.muse_root.is_dir(),mflux=bool(getattr(self.s,'MFLUX',None) and (self.s.MFLUX/'mflux-generate-flux2').is_file())),dossier=str(self.s.MODELES))
     def voix_catalogue(self):
         try:
             with urllib.request.urlopen(self.s.VOICESTUDIO+'/engines/tts',timeout=3) as r:data=json.load(r)

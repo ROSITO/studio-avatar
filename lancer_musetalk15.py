@@ -30,6 +30,7 @@ subprocess.run(["ffmpeg", "-v", "error", "-i", str(SRC), "-start_number", "0", s
 imgs = sorted(glob.glob(str(tmp / "in/*.png")))
 feats, length = ap.get_audio_feature(str(AUD))
 chunks = ap.get_whisper_chunk(feats, dev, dtype, whisper, length, fps=FPS, audio_padding_length_left=2, audio_padding_length_right=2)
+print("[MuseTalk] Détection du visage", flush=True)
 coords, frames = get_landmark_and_bbox(imgs, SHIFT)
 latents = []
 for (x1, y1, x2, y2), fr in zip(coords, frames):
@@ -49,6 +50,9 @@ for wb, lb in datagen(chunks, lat_in, BATCH, device=dev):
             x1, y1, x2, y2 = c; y2 = min(y2 + EXTRA_MARGIN, fr.shape[0])
             fr = get_image(fr, cv2.resize(r.astype(np.uint8), (x2 - x1, y2 - y1)), [x1, y1, x2, y2], mode="jaw", fp=fp)
         cv2.imwrite(str(tmp / f"out/{i:08d}.png"), fr); i += 1
+    # Progression réelle (images écrites) : les barres tqdm de MuseTalk finissent avant le mélange.
+    print(f"[MuseTalk] Images {i}/{len(chunks)}", flush=True)
+print("[MuseTalk] Encodage", flush=True)
 subprocess.run(["ffmpeg", "-v", "error", "-y", "-framerate", str(FPS), "-i", str(tmp / "out/%08d.png"), "-i", str(AUD),
                 "-c:v", "libx264", "-crf", "14", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", str(OUT)], check=True)
 print("ok", OUT, i, "images")

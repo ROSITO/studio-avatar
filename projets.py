@@ -13,6 +13,8 @@ def installer(studio):
 VERROU = threading.RLock()
 
 def ident(): return uuid.uuid4().hex[:12]
+BLOC_MAX=6   # secondes de voix par passe LTX : au-delà, le visage dérive
+CARACTERES_SECONDE=14
 def lire(pid):
     if not isinstance(pid, str) or not pid.isalnum(): raise ValueError('Projet invalide')
     f = RACINE / (pid + '.json')
@@ -32,10 +34,21 @@ def liste():
 def actif(pid):
     return any(t['type'].startswith('projet_') and t['params'].get('projet') == pid and t['etat'] in ('en attente', 'en cours') for t in S.TACHES)
 def seed_aleatoire(): return secrets.randbelow(2**31)
+MOTEURS=('a2v','musetalk')
+def moteur(p): return p.get('moteur','musetalk')   # anciens projets : gestes bouche fermée + MuseTalk
+def visage(t,video):
+    """Décalage max du visage (part de sa largeur) ; 9 si aucun visage de face."""
+    r=S.subprocess.run([str(S.CV_PY),str(S.ICI/'visage.py'),str(video)],capture_output=True,text=True)
+    v=json.loads(r.stdout or '{"decalage": 9}')
+    with open(S.ICI/'taches'/f"{t['id']}.log",'a') as log: log.write(f'contrôle visage {video.name} : {v}\n')
+    return v['decalage']
+def segment(t,src,debut,duree,out):
+    """Extrait de voix complété de silence : a2v exige un audio couvrant toute la vidéo."""
+    S.lancer(t,['ffmpeg','-v','error','-y','-ss',f'{debut:.6f}','-i',src,'-af','apad','-t',f'{duree+.2:.6f}','-ar','44100','-ac','1',out])
 
 def bloc(ton='neutre', texte=''):
     cle = next(gs[0] for k, *_, gs in S.TONS if k == ton)
-    return dict(id=ident(), ton=ton, texte=texte, prompt=S.GESTES[cle], duree=max(1.4, len(texte)/14), seed=seed_aleatoire(), seed_mode='auto', revision=0, clip=None, audio=None)
+    return dict(id=ident(), ton=ton, texte=texte, prompt=S.GESTES[cle], duree=max(1.4, len(texte)/CARACTERES_SECONDE), seed=seed_aleatoire(), seed_mode='auto', revision=0, clip=None, audio=None)
 def relier(p):
     anciens = {(x['gauche'],x['droite']):x for x in p.get('transitions',[])}
     p['transitions'] = [anciens.get((a['id'],b['id'])) or dict(id=ident(),gauche=a['id'],droite=b['id'],duree=0.5,seed=seed_aleatoire(),seed_mode='auto',revision=0,clip=None) for a,b in zip(p['blocs'],p['blocs'][1:])]
@@ -44,11 +57,19 @@ def pont_pret(p,b):
     a,z = [next(x for x in p['blocs'] if x['id']==b[k]) for k in ('gauche','droite')]
     r=montage.raccord(p,b)
     return courant(a) and courant(z) and courant(b) and b.get('extremites') == [a['clip'],z['clip']] and b.get('raccord_version')==montage.VERSION and b.get('coupe_frame')==r['coupe'] and b.get('frames_cible')==r['frames']
+def decouper(texte):
+    """Groupe les phrases d’un TAG en morceaux d’au plus BLOC_MAX s estimées ; une phrase n’est jamais coupée."""
+    import re
+    morceaux=[]
+    for phrase in re.split(r'(?<=[.!?…])\s+',texte):
+        if morceaux and len(morceaux[-1])+1+len(phrase)<=BLOC_MAX*CARACTERES_SECONDE: morceaux[-1]+=' '+phrase
+        else: morceaux.append(phrase)
+    return morceaux
 def creer(d):
     avatar=d.get('avatar','')
     if '/' in avatar or not (S.ICI/'sources'/avatar).is_file(): raise ValueError('Photo introuvable')
     if d.get('audio') and ('/' in d['audio'] or not (S.ICI/'audios'/d['audio']).is_file()): raise ValueError('Audio introuvable')
-    p=dict(id=ident(),nom=d.get('nom') or 'Nouveau projet',avatar=avatar,voix=d.get('voix'),langue=d.get('langue','fr'),audio_source=d.get('audio'),blocs=[],transitions=[],revision=0,export=None,montage_version=montage.VERSION)
+    p=dict(id=ident(),nom=d.get('nom') or 'Nouveau projet',avatar=avatar,voix=d.get('voix'),langue=d.get('langue','fr'),audio_source=d.get('audio'),moteur=d.get('moteur') if d.get('moteur') in MOTEURS else 'a2v',blocs=[],transitions=[],revision=0,export=None,montage_version=montage.VERSION)
     # Une balise reconnue ouvre un bloc ; la ponctuation ne le découpe jamais.
     import re
     ton='neutre'; texte=''
@@ -56,10 +77,10 @@ def creer(d):
         tag=re.fullmatch(r'\[([^\]]+)\]',morceau.strip())
         nouveau=S.BALISES.get(tag[1].strip().lower()) if tag else None
         if nouveau:
-            if texte.strip(): p['blocs'].append(bloc(ton,' '.join(texte.split())))
+            if texte.strip(): p['blocs']+=[bloc(ton,m) for m in decouper(' '.join(texte.split()))]
             ton=nouveau; texte=''
         elif not tag: texte+=morceau
-    if texte.strip(): p['blocs'].append(bloc(ton,' '.join(texte.split())))
+    if texte.strip(): p['blocs']+=[bloc(ton,m) for m in decouper(' '.join(texte.split()))]
     if not p['blocs']: p['blocs']=[bloc()]
     if p['audio_source']:
         total=S.duree(S.ICI/'audios'/p['audio_source']); n=sum(len(b['texte']) for b in p['blocs']) or 1; debut=0
@@ -77,6 +98,13 @@ def modifier(pid,d):
         if action=='ajouter':
             if p['audio_source']: raise ValueError('Créez un projet texte pour ajouter des blocs ; les blocs audio sont liés au fichier importé.')
             p['blocs'].append(bloc())
+        elif action=='controle_visage':
+            p['controle_visage']=bool(d.get('actif'))   # s’applique aux prochains clips, sans invalider
+        elif action=='moteur':
+            if d.get('moteur') not in MOTEURS: raise ValueError('Moteur inconnu')
+            if d['moteur']!=moteur(p):
+                p['moteur']=d['moteur']
+                for x in p['blocs']+p['transitions']: x['revision']+=1   # rushs à refaire avec l’autre moteur
         else:
             x=next((b for b in p['blocs']+p['transitions'] if b['id']==d.get('element')),None)
             if not x: raise ValueError('Élément introuvable')
@@ -170,7 +198,25 @@ def executer(t):
             with VERROU: sauver(p)  # checkpoint conservé si LTX échoue
         W,H=S.resolution(S.ICI/'sources'/p['avatar']); out=S.ICI/'clips'/f'{suffix}.mp4'
         t['etape']='Mini-clip LTX'; S.sauver()
-        S.ltx(t,[(S.ICI/'sources'/p['avatar'],0)],S.BASE_CLIP+' '+x['prompt'],W,H,S.images_ltx(math.ceil(x['duree']*24)),x['seed'],out)
+        n=S.images_ltx(math.ceil(x['duree']*24)); photo=[(S.ICI/'sources'/p['avatar'],0)]
+        if moteur(p)=='a2v':
+            voix=S.ICI/'audios'/f'{suffix}-a2v.wav'; segment(t,S.ICI/'audios'/x['audio'],0,n/24,voix)
+            prompt,extra=S.BASE_PARLE+' '+x['prompt'].replace('closed-mouth ',''),[voix]
+        else: prompt,extra=S.BASE_CLIP+' '+x['prompt'],[]
+        # Option : un clip dont le visage bouge trop (tête penchée/tournée) est refait avec la seed suivante.
+        essais=S.ESSAIS if p.get('controle_visage') else 1; meilleur=None; seed=x['seed']
+        for e in range(essais):
+            if e: t['etape']=f'Mini-clip refait ({e+1}/{essais}) : visage pas assez de face'; S.sauver()
+            sortie=out if not e else out.with_name(f'{suffix}-essai{e}.mp4')
+            S.ltx(t,photo,prompt,W,H,n,(seed+e)%2**31,sortie,*extra)
+            if essais==1: break
+            d=visage(t,sortie)
+            if meilleur is None or d<meilleur[0]: meilleur=(d,sortie,(seed+e)%2**31)
+            if d<=S.SEUIL_VISAGE: break
+        if meilleur:
+            if meilleur[1]!=out: meilleur[1].replace(out)
+            x['seed']=meilleur[2]
+        x['visage']=meilleur[0] if meilleur else None
         S.lancer(t,['ffmpeg','-v','error','-y','-i',out,'-frames:v','1','-vf','scale=320:-2',out.with_suffix('.jpg')])
         x['clip']=out.name; x['rendu_revision']=x['revision']
     elif genre=='pont':
@@ -189,6 +235,11 @@ def executer(t):
         if retour['frames']==0:
             t['etape']='Coupe directe : poses déjà identiques'; S.sauver()
             S.lancer(t,['ffmpeg','-v','error','-y','-loop','1','-i',derniere,'-frames:v','1','-r','24','-pix_fmt','yuv420p',out])
+        elif moteur(p)=='a2v':
+            # La voix du bloc gauche continue pendant le retour : le pont parle aussi.
+            n=S.images_ltx(retour['frames']+2); voix=S.ICI/'audios'/f'{suffix}-a2v.wav'
+            segment(t,S.ICI/'audios'/a['audio'],retour['coupe']/montage.FPS,n/24,voix)
+            S.ltx(t,[(premiere,0),(derniere,'last')],'The same person keeps talking to the camera, her lips moving in sync with her speech, while she smoothly moves from the first pose to the final pose. '+prompt,W,H,n,x['seed'],out,voix)
         else:
             S.ltx(t,[(premiere,0),(derniere,'last')],prompt,W,H,S.images_ltx(retour['frames']+2),x['seed'],out)
         S.lancer(t,['ffmpeg','-v','error','-y','-i',out,'-frames:v','1','-vf','scale=320:-2',out.with_suffix('.jpg')])
@@ -252,8 +303,13 @@ def exporter(t,p):
         af.append(f'[{k}:a]aresample=44100,aformat=channel_layouts=mono,apad,atrim=duration={d:.9f},asetpts=PTS-STARTPTS[a{k}]')
     af.append(''.join(f'[a{k}]' for k in range(len(plan)))+f'concat=n={len(plan)}:v=0:a=1[o]')
     S.lancer(t,args+['-filter_complex',';'.join(af),'-map','[o]',audio])
-    out=S.ICI/'videos'/f'{suffix}.mp4'; t['etape']='Synchronisation des lèvres'; S.sauver()
-    S.musetalk(t,seq,audio,out,0)
+    out=S.ICI/'videos'/f'{suffix}.mp4'
+    if moteur(p)=='a2v':
+        t['etape']='Ajout de la voix'; S.sauver()   # a2v a déjà animé la bouche
+        S.lancer(t,['ffmpeg','-v','error','-y','-i',seq,'-i',audio,'-map','0:v','-map','1:a','-c:v','copy','-c:a','aac','-shortest',out])
+    else:
+        t['etape']='Synchronisation des lèvres'; S.sauver()
+        S.musetalk(t,seq,audio,out,0)
     if t.get('annuler'): raise RuntimeError('Tâche annulée')
     p['export']=dict(fichier=out.name,revision=p['revision'],montage_version=montage.VERSION); sauver(p)
     t['resultat']=S.meta(out,projet=p['id'],nom=p['nom'],avatar=p['avatar'])

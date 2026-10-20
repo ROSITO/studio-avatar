@@ -14,6 +14,11 @@ p=parse('Denoising: 100%|██| 3/3 [01:57<00:00, 39.19s/it]\n$ ffmpeg -v error
 assert.equal(p.pourcent,null);assert.match(p.label,/enregistrement/);
 p=parse('[Loading text encoder (Gemma)] ...');assert.equal(p.pourcent,null);assert.match(p.label,/encodeur/);
 p=parse('');assert.equal(p.pourcent,null);assert.equal(p.label,'Préparation');
+// MuseTalk : la barre suit les images réellement écrites, pas ses barres tqdm internes déjà à 100 %.
+p=parse('$ python lancer_musetalk15.py\n100%|██| 30/30 [00:20<00:00]\n[MuseTalk] Détection du visage\n[MuseTalk] Images 40/120');
+assert.equal(p.pourcent,33);assert.equal(p.fait,40);assert.equal(p.label,'Synchronisation des lèvres');
+p=parse('$ mflux-generate-flux2 --model x\n 50%|█| 2/4 [00:20<00:21, 10.2s/it]');assert.equal(p.pourcent,50);assert.equal(p.label,'Génération FLUX');assert.equal(p.restant,'00:21');
+p=parse('[MuseTalk] Images 120/120\n[MuseTalk] Encodage');assert.equal(p.pourcent,null);assert.match(p.label,/Encodage/);
 assert.ok(html.includes('await chargerProgressions();'));assert.ok(html.includes('afficherProgressions();'));
 console.log('Progression: parser, pass changes, decoding, command resets and polling OK.');
 

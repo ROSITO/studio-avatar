@@ -2,7 +2,7 @@
 """Studio avatar : clips LTX-2.3 (local), ponts de retour à la pose, séquence continue, lipsync MuseTalk 1.5.
 Serveur local sans dépendance (Python ≥ 3.10) + une page web. Lancer : python3 studio.py  → http://localhost:8765
 Une seule tâche GPU à la fois (file d'attente)."""
-import json, math, os, re, shutil, subprocess, threading, time, uuid
+import json, math, os, re, secrets, shutil, subprocess, threading, time, uuid
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs, unquote
@@ -17,7 +17,9 @@ CV_PY = Path(os.environ.get('STUDIO_CV_PYTHON', sys.executable)).expanduser()
 FFMPEG_BIN = os.environ.get('STUDIO_FFMPEG_BIN', '')
 VOICESTUDIO = os.environ.get('STUDIO_VOICE_URL', 'http://127.0.0.1:3900').rstrip('/')
 PORT = int(os.environ.get('STUDIO_PORT', '8765'))
-DOSSIERS = ['sources', 'audios', 'clips', 'ponts', 'sequences', 'lipsync', 'videos']
+MFLUX = Path(os.environ.get('STUDIO_MFLUX_BIN', str(Path(sys.executable).parent))).expanduser()   # dossier des commandes mflux-generate-*
+MODELES_IMAGE = Path(os.environ['STUDIO_IMAGE_MODELS_DIR']).expanduser() if os.environ.get('STUDIO_IMAGE_MODELS_DIR') else None   # poids FLUX déjà installés ailleurs
+DOSSIERS = ['sources', 'audios', 'clips', 'ponts', 'sequences', 'lipsync', 'videos', 'portraits', 'references']
 for d in DOSSIERS: (ICI / d).mkdir(exist_ok=True)
 
 # Recettes validées sur la vidéo VoiceStudio (19/10/2026)
@@ -30,6 +32,17 @@ BASE_CLIP = ("A YouTuber seated and facing the camera, exactly the same person, 
 BASE_PONT = ("A YouTuber seated and facing the camera, exactly the same person, clothes and setting as in the image. Her mouth stays closed, her lips remain gently together and do not move. "
              "She calmly and smoothly settles back into her starting position, exactly as in the image, looking straight into the camera. "
              "Slow natural motion. Static camera, the background stays exactly the same.")
+# Moteur a2v (photo + voix -> vidéo parlante, testé le 20/10/2026) : la bouche suit la voix, pas de MuseTalk.
+BASE_PARLE = ("A YouTuber seated and facing the camera, exactly the same person, clothes and setting as in the image, "
+              "talking naturally to the camera, her lips moving in sync with her speech. "
+              "She keeps her head upright and her face turned straight toward the camera the whole time. "
+              "Her hands stay low, near her lap: only small, discreet hand movements. Static camera, the background stays exactly the same.")
+
+# Portrait d'avatar : la pose dont a2v et MuseTalk ont besoin (de face, tête droite, bouche fermée, mains basses).
+BASE_PORTRAIT = ("Photorealistic portrait photo of one person seated and facing the camera, centered in a vertical frame, "
+                 "head upright, looking straight into the lens, mouth closed, relaxed natural expression, "
+                 "both hands resting low on the lap and visible, upper body and knees in frame, calm uncluttered background, soft natural light.")
+ROLES_REF = {'visage': 'the face, hair and skin tone of the person', 'tenue': 'the clothing', 'decor': 'the setting and background', 'style': 'the lighting and photographic style'}
 
 # Gestes validés (bouche fermée, gestes doux, 4 s, ancrés au début seulement).
 GESTES = {
@@ -110,23 +123,48 @@ def lancer(t, cmd, env=None):
     if t.get('annuler'): raise RuntimeError('Tâche annulée')
     if code: raise RuntimeError(f'commande terminée avec le code {code} (voir le journal)')
 
-def ltx(t, images, prompt, W, H, frames, seed, sortie):
+def ltx(t, images, prompt, W, H, frames, seed, sortie, audio=None):
+    """Sans audio : geste muet (generate). Avec audio : vidéo parlante (a2v) ; l'audio doit couvrir les frames/24 s."""
     choix = t.get('modeles') or GESTION_MODELES.selection()
     video, texte = choix['video'], choix['texte']
     if not video['installe']: raise RuntimeError('Installez ou importez le modèle vidéo dans la page Modèles.')
     if not texte['installe']: raise RuntimeError('Installez l’encodeur Gemma dans la page Modèles.')
-    cmd = [LTX, 'generate', '--model', video['path'], '--gemma', texte['path']]
+    cmd = [LTX, 'a2v' if audio else 'generate', '--model', video['path'], '--gemma', texte['path']]
     for img, idx, *force in images: cmd += ['--image', img, idx, force[0] if force else '1.0']
     tmp = sortie.with_suffix('.tmp.mp4')
-    cmd += ['--prompt', prompt, '--distilled', '--low-ram', '-H', H, '-W', W, '-f', frames, '--frame-rate', '24', '--no-audio', '--seed', seed, '-o', tmp]
+    cmd += ['--prompt', prompt, '--distilled', '--low-ram', '-H', H, '-W', W, '-f', frames, '--frame-rate', '24', '--seed', seed, '-o', tmp]
+    cmd += ['--audio', audio] if audio else ['--no-audio']
     lancer(t, cmd, {'HF_HOME': str(MODELES / 'huggingface'), 'HF_HUB_OFFLINE': '1', 'PATH': (f"{FFMPEG_BIN}:" if FFMPEG_BIN else "") + os.environ['PATH']})
     tmp.rename(sortie)
+
+def portrait(t):
+    """FLUX (mflux) : 1 à 4 variantes en un seul chargement du modèle ; refs = [{dossier, nom, role}]."""
+    p = t['params']; m = (t.get('modeles') or GESTION_MODELES.selection())['image']
+    if not m['installe']: raise RuntimeError('Installez un modèle image (FLUX) dans la page Modèles.')
+    refs = []
+    for r in p.get('refs', [])[:4]:
+        f = ICI / r['dossier'] / nom_sur(r['nom'])
+        if r['dossier'] not in ('references', 'sources') or not f.is_file(): raise ValueError('Image de référence introuvable')
+        refs.append((f, ROLES_REF.get(r.get('role'), ROLES_REF['visage'])))
+    consigne = ' '.join(f'Reference image {k + 1}: copy {role}.' for k, (_, role) in enumerate(refs)) + ' ' + BASE_PORTRAIT + ' ' + p.get('prompt', '')
+    if 'seeds' not in t: t['seeds'] = [secrets.randbelow(10 ** 7) for _ in range(max(1, min(4, int(p.get('nombre', 4)))))]; sauver()   # même tirage à la reprise
+    flux3 = m['id'].startswith('flux3')
+    cmd = [MFLUX / f"mflux-generate-{'flux3' if flux3 else 'flux2'}{'-edit' if refs else ''}", '--model', m['path'], '--prompt', consigne.strip(),
+           '--width', 768, '--height', 1200, '--seed', *t['seeds'], '--output', ICI / 'portraits' / f"{t['id']}.png"]   # plusieurs seeds : mflux ajoute _seed_N
+    if refs: cmd += ['--image-paths', *[f for f, _ in refs]]
+    if not flux3: cmd += ['--steps', 4, '--guidance', '1.0', '--quantize', 8]   # recette Klein distillé
+    t['etape'] = 'Génération des portraits'; sauver()
+    lancer(t, cmd, {'HF_HUB_OFFLINE': '1'})
+    images = sorted(f.name for f in (ICI / 'portraits').glob(f"{t['id']}*.png"))
+    if not images: raise RuntimeError('Aucune image produite (voir le journal).')
+    t['resultat'] = dict(images=images, modele=m['id'], consigne=consigne.strip())
 
 def faire(t):
     p = t['params']
     if 'modeles' not in t: t['modeles'] = GESTION_MODELES.selection()
     if t['type'].startswith('projet_'):
         projets.executer(t); return
+    if t['type'] == 'portrait': portrait(t); return
     if t['type'] == 'clip':
         src = ICI / 'sources' / p['source']; W, H = resolution(src)
         out = ICI / 'clips' / f"{nom_sur(p['nom'])}.mp4"
@@ -459,7 +497,7 @@ class H(BaseHTTPRequestHandler):
             except (BrokenPipeError, ConnectionResetError): pass
     def do_PUT(self):
         u = urlparse(self.path); q = parse_qs(u.query)
-        if u.path == '/api/envoi' and q.get('dossier', [''])[0] in ('sources', 'audios'):
+        if u.path == '/api/envoi' and q.get('dossier', [''])[0] in ('sources', 'audios', 'references'):
             n = nom_sur(q['nom'][0]); (ICI / q['dossier'][0] / n).write_bytes(self.corps())
             return self.json(dict(nom=n))
         self.send_error(400)
@@ -489,7 +527,7 @@ class H(BaseHTTPRequestHandler):
                 return self.json(resultat)
             except (ValueError, KeyError, TypeError) as e: return self.json(dict(erreur=str(e)), 400)
         if u.path == '/api/tache':
-            if d.get('type') not in ('clip', 'pont', 'sequence', 'lipsync', 'video', 'avatar', 'variante'): return self.json(dict(erreur='type inconnu'), 400)
+            if d.get('type') not in ('clip', 'pont', 'sequence', 'lipsync', 'video', 'avatar', 'variante', 'portrait'): return self.json(dict(erreur='type inconnu'), 400)
             if d['type'] == 'avatar': nouvelles = preparation(d['params']['source'])
             else: nouvelles = [d]
             with VERROU:
@@ -508,6 +546,10 @@ class H(BaseHTTPRequestHandler):
                 for x in (ICI / 'clips' / c, ICI / 'ponts' / f'pont-{c}'):
                     for y in (x, x.with_suffix('.json'), x.with_suffix('.jpg')): y.unlink(missing_ok=True)
             (ICI / 'sources' / src).unlink(missing_ok=True); return self.json(dict(ok=True))
+        if u.path == '/api/portraits/utiliser':   # un portrait généré devient une photo d'avatar
+            f = ICI / 'portraits' / nom_sur(d.get('fichier', ''))
+            if not f.is_file(): return self.json(dict(erreur='Portrait introuvable'), 400)
+            n = nom_sur(d.get('nom') or f.stem) + '.png'; shutil.copy(f, ICI / 'sources' / n); return self.json(dict(nom=n))
         if u.path == '/api/supprimer' and d.get('dossier') in DOSSIERS:
             f = ICI / d['dossier'] / nom_sur(d.get('nom', ''))
             for x in (f, f.with_suffix('.json'), f.with_suffix('.jpg')): x.unlink(missing_ok=True)
