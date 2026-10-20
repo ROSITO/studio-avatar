@@ -186,6 +186,7 @@ pre { background:#080c11; }
 @media(max-width:860px) { .tl-editor { grid-template-columns:1fr; } .tl-preview video,.tl-preview img { max-height:300px; } .tl-project { flex-wrap:wrap; } }
 
 .modeles-groupe { margin:30px 0; } .modeles-cartes { display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px; } .modele-carte { background:var(--pan);border:1px solid var(--bord);border-radius:12px;padding:20px;min-width:0; } .modele-carte.selectionne { border-color:#ffc62965; } .modele-entete { display:flex;flex-wrap:wrap;gap:10px;align-items:center; } .modele-carte p { font-size:12px;line-height:1.7; } .modele-chemin { overflow-wrap:anywhere;font-size:12px; } .modele-carte a { color:var(--acc);font-size:11px;overflow-wrap:anywhere; } @media(max-width:540px) { .modeles-cartes {grid-template-columns:1fr;} }
+.suivi-calcul { border:1px solid #ffc62945;background:var(--pan);border-radius:12px;padding:18px 20px;margin:18px 0; } .suivi-entete { display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:13px; } .suivi-entete span { color:var(--acc); } .suivi-details,.suivi-activite { font-size:12px;color:var(--mut);margin-top:8px; } .suivi-activite { color:var(--ok); } .suivi-actions { display:flex;gap:8px;margin-top:12px; } .barre.indeterminee div { animation:calcul-actif 2s ease-in-out infinite; } @keyframes calcul-actif { 0% {transform:translateX(-110%);} 100% {transform:translateX(390%);} }
 </style>
 </head>
 <body>
@@ -206,6 +207,7 @@ pre { background:#080c11; }
 
 <main id="contenu">
 <div class="topbar"><span>Votre espace <span style="margin:0 12px;color:#475569">/</span> <strong id="page-label">Nouvelle vidéo</strong></span><span class="tag">CRÉATION EN LOCAL</span></div>
+<div id="suivi-global" aria-live="off"></div>
 <!-- ================= NOUVELLE VIDÉO ================= -->
 <div class="page actif" id="p-nouvelle">
   <header class="hero"><div class="eyebrow">De l’idée à la vidéo</div><h2>Donnez un visage<br><span>à vos idées.</span></h2><p class="intro">Un avatar, votre voix, votre histoire. Créez une vidéo qui vous ressemble, en trois étapes.</p><div class="hero-foot"><span>Exécution locale</span><span>Avatars personnalisés</span><span>Sans abonnement</span></div></header>
@@ -453,7 +455,7 @@ function listeVideos() {
     const devant = E.taches.filter(x => ['en attente', 'en cours'].includes(x.etat) && x.cree < t.cree).length;
     const corps = t.etat === 'erreur' ? `<div class="alerte">Échec : ${esc(t.erreur)}</div>`
       : t.etat === 'en attente' ? `<div class="mut">En attente : elle passe dès que la tâche en cours se termine.</div>`
-      : `<div class="barre"><div style="width:${Math.min(95, Math.round(100 * ecoule / est))}%"></div></div><div class="mut">${esc(t.etape || 'En préparation')}… · ${minsec(ecoule)} sur environ ${minsec(est)}</div>`;
+      : progressionHTML(t,false);
     const btn = t.etat === 'erreur' ? `<button class="petit" onclick="reessayer('${t.id}')">Réessayer</button><button class="sec petit" onclick="masquer('${t.id}')">Retirer</button>`
       : `<button class="sec petit" onclick="annuler('${t.id}')">Annuler</button>`;
     return `<div class="ligne-video"><img src="${f('sources', p.avatar)}"><div><div style="font-weight:600;font-size:16px">${esc(p.nom)}</div>${corps}</div><div style="display:flex;flex-direction:column;gap:8px">${btn}</div></div>`;
@@ -565,10 +567,12 @@ let empreinte = '', tour = 0;
 async function rafraichir(forcer) {
   [E, PROJETS] = await Promise.all([api('/api/etat'), api('/api/projets')]); E.taches = E.taches.filter(t => !MASQUES.has(t.id));
   if (forcer || tour++ % 5 === 0) VOIX = await api('/api/voix');
+  await chargerProgressions();
   if ($('p-modeles').classList.contains('actif')) await chargerModeles();
   const e = JSON.stringify([E.fichiers, E.taches.map(t => [t.id, t.etat]), E.t7, VOIX.ok, VOIX.voix.length, PROJETS]);
   if (forcer || e !== empreinte) { empreinte = e; dessiner(); }
   else { if ($('p-videos').classList.contains('actif') && E.taches.some(t => t.etat === 'en cours' && t.type === 'video')) listeVideos(); dessinerTaches(); }
+  afficherProgressions();
 }
 let TL_DIRTY = false;
 function ouvrirProjet(id) { PROJET=id; ELEMENT=null; TL_DIRTY=false; TL_EMPREINTE=''; dessinerProjets(); }
@@ -608,7 +612,7 @@ function dessinerProjets() {
   };
   const strip=p.blocs.map((b,i)=>item(b,false,i)+(p.transitions[i]?item(p.transitions[i],true,i):'')).join('');
   const dernierExport=p.export ? `<div class="encadre"><strong>${p.export.revision===p.revision?'Dernier export':'Export précédent · la timeline a changé'}</strong><p><video controls playsinline preload="metadata" style="width:100%;max-height:350px" src="${f('videos',p.export.fichier)}"></video></p><a href="${f('videos',p.export.fichier)}" download>Télécharger la vidéo</a></div>`:'';
-  $('timeline-projet').innerHTML=`<div class="timeline-toolbar"><h3>${esc(p.nom)}</h3><button class="sec petit" ${busy||p.audio_source?'disabled':''} onclick="actionProjet('ajouter')">＋ Bloc TAG</button><button class="sec petit" ${busy?'disabled':''} onclick="lancerProjet('manquants')">Générer les éléments manquants</button><button class="petit" ${busy||!toutPret?'disabled':''} onclick="lancerProjet('export')">Assembler et synchroniser</button></div><p class="mut" style="font-size:12px">${cumul.toFixed(1)} s au total · Les transitions ajoutent une pause réglable à la voix. ${p.audio_source?'Audio importé : découpage initial estimé au prorata du texte.':''} ${busy?'Calcul en cours : les réglages seront modifiables à la fin.':''}</p>${activeJob?`<div class="info">${esc(activeJob.etape || activeJob.etat)} <button class="sec petit" onclick="annuler('${activeJob.id}')">Annuler cette tâche</button></div>`:''}<div class="timeline-strip">${strip}</div><div class="tl-editor"><div class="tl-preview">${x.clip?`<video controls playsinline preload="metadata" src="${f(transition?'ponts':'clips',x.clip)}"></video><p class="mut" style="font-size:12px">${(transition?pontCourant(p,x):clipCourant(x))?'Version actuelle':'Version précédente conservée en aperçu.'}</p>`:`<img src="${f('sources',p.avatar)}" alt="Photo de référence"><p class="mut">${transition?'Générez les deux clips voisins, puis leur liaison.':'Photo de référence · clip à générer'}</p>`}${!transition&&x.audio?`<audio controls style="width:100%" src="${f('audios',x.audio)}"></audio>`:''}</div><div class="tl-fields" oninput="TL_DIRTY=true;document.getElementById('tl-save-state').textContent='Modifications non enregistrées'">${transition?`<h3>Transition entre deux clips</h3><p class="mut">Dernière image retenue du clip précédent → première image du suivant. Aucun retour à la photo initiale.</p>`:`<label for="tl-ton">TAG / intention</label><select id="tl-ton" ${busy?'disabled':''}>${(E.tons||[]).map(t=>`<option value="${t.cle}" ${x.ton===t.cle?'selected':''}>${esc(t.nom)}</option>`).join('')}</select><label for="tl-text">Texte du bloc (plusieurs phrases possibles)</label><textarea id="tl-text" ${busy||p.audio_source?'disabled':''}>${esc(x.texte)}</textarea><label for="tl-prompt">Direction du jeu LTX (en anglais)</label><textarea id="tl-prompt" ${busy?'disabled':''}>${esc(x.prompt)}</textarea>`}<div class="ligne"><div><label for="tl-duration">${transition?'Durée de la pause':'Durée du clip'} (secondes)</label><input id="tl-duration" type="number" min="0.5" max="20" step="0.1" value="${x.duree.toFixed(3)}" ${busy?'disabled':''}></div><div><label for="tl-seed">Seed LTX</label><input id="tl-seed" type="number" value="${x.seed}" ${busy?'disabled':''}></div></div>${!transition?'<p class="mut" style="font-size:11px">La première génération mesure la voix et règle la durée. Ensuite, vous pouvez ajuster le clip : une durée plus courte coupe la parole à l’export.</p>':''}<div class="tl-actions"><button class="sec" ${busy?'disabled':''} onclick="enregistrerElement()">Enregistrer</button><button ${busy?'disabled':''} onclick="genererElement('${transition?'pont':'clip'}')">${x.clip?'Relancer uniquement ce '+(transition?'pont':'clip'):'Générer '+(transition?'la transition':'ce clip')}</button>${t&&['en attente','en cours'].includes(t.etat)?`<button class="sec" onclick="annuler('${t.id}')">Annuler</button>`:''}</div><p id="tl-save-state" class="mut" style="font-size:12px">${esc(statutElement(p,x,transition))}</p>${t?.erreur?`<div class="tl-error">${esc(t.erreur)}</div>`:''}${!transition?`<div class="tl-actions"><button class="sec petit" ${busy||p.blocs[0].id===x.id?'disabled':''} onclick="actionProjet('deplacer',{sens:-1})">← Déplacer</button><button class="sec petit" ${busy||p.blocs.at(-1).id===x.id?'disabled':''} onclick="actionProjet('deplacer',{sens:1})">Déplacer →</button><button class="sec petit" ${busy||p.blocs.length===1?'disabled':''} onclick="actionProjet('supprimer')">Retirer ce bloc</button></div>`:''}</div></div>${dernierExport}`;
+  $('timeline-projet').innerHTML=`<div class="timeline-toolbar"><h3>${esc(p.nom)}</h3><button class="sec petit" ${busy||p.audio_source?'disabled':''} onclick="actionProjet('ajouter')">＋ Bloc TAG</button><button class="sec petit" ${busy?'disabled':''} onclick="lancerProjet('manquants')">Générer les éléments manquants</button><button class="petit" ${busy||!toutPret?'disabled':''} onclick="lancerProjet('export')">Assembler et synchroniser</button></div><p class="mut" style="font-size:12px">${cumul.toFixed(1)} s au total · Les transitions ajoutent une pause réglable à la voix. ${p.audio_source?'Audio importé : découpage initial estimé au prorata du texte.':''} ${busy?'Calcul en cours : les réglages seront modifiables à la fin.':''}</p>${activeJob?`<div data-suivi-tache="${activeJob.id}">${progressionHTML(activeJob)}</div>`:''}<div class="timeline-strip">${strip}</div><div class="tl-editor"><div class="tl-preview">${x.clip?`<video controls playsinline preload="metadata" src="${f(transition?'ponts':'clips',x.clip)}"></video><p class="mut" style="font-size:12px">${(transition?pontCourant(p,x):clipCourant(x))?'Version actuelle':'Version précédente conservée en aperçu.'}</p>`:`<img src="${f('sources',p.avatar)}" alt="Photo de référence"><p class="mut">${transition?'Générez les deux clips voisins, puis leur liaison.':'Photo de référence · clip à générer'}</p>`}${!transition&&x.audio?`<audio controls style="width:100%" src="${f('audios',x.audio)}"></audio>`:''}</div><div class="tl-fields" oninput="TL_DIRTY=true;document.getElementById('tl-save-state').textContent='Modifications non enregistrées'">${transition?`<h3>Transition entre deux clips</h3><p class="mut">Dernière image retenue du clip précédent → première image du suivant. Aucun retour à la photo initiale.</p>`:`<label for="tl-ton">TAG / intention</label><select id="tl-ton" ${busy?'disabled':''}>${(E.tons||[]).map(t=>`<option value="${t.cle}" ${x.ton===t.cle?'selected':''}>${esc(t.nom)}</option>`).join('')}</select><label for="tl-text">Texte du bloc (plusieurs phrases possibles)</label><textarea id="tl-text" ${busy||p.audio_source?'disabled':''}>${esc(x.texte)}</textarea><label for="tl-prompt">Direction du jeu LTX (en anglais)</label><textarea id="tl-prompt" ${busy?'disabled':''}>${esc(x.prompt)}</textarea>`}<div class="ligne"><div><label for="tl-duration">${transition?'Durée de la pause':'Durée du clip'} (secondes)</label><input id="tl-duration" type="number" min="0.5" max="20" step="0.1" value="${x.duree.toFixed(3)}" ${busy?'disabled':''}></div><div><label for="tl-seed">Seed LTX</label><input id="tl-seed" type="number" value="${x.seed}" ${busy?'disabled':''}></div></div>${!transition?'<p class="mut" style="font-size:11px">La première génération mesure la voix et règle la durée. Ensuite, vous pouvez ajuster le clip : une durée plus courte coupe la parole à l’export.</p>':''}<div class="tl-actions"><button class="sec" ${busy?'disabled':''} onclick="enregistrerElement()">Enregistrer</button><button ${busy?'disabled':''} onclick="genererElement('${transition?'pont':'clip'}')">${x.clip?'Relancer uniquement ce '+(transition?'pont':'clip'):'Générer '+(transition?'la transition':'ce clip')}</button>${t&&['en attente','en cours'].includes(t.etat)?`<button class="sec" onclick="annuler('${t.id}')">Annuler</button>`:''}</div><p id="tl-save-state" class="mut" style="font-size:12px">${esc(statutElement(p,x,transition))}</p>${t?.erreur?`<div class="tl-error">${esc(t.erreur)}</div>`:''}${!transition?`<div class="tl-actions"><button class="sec petit" ${busy||p.blocs[0].id===x.id?'disabled':''} onclick="actionProjet('deplacer',{sens:-1})">← Déplacer</button><button class="sec petit" ${busy||p.blocs.at(-1).id===x.id?'disabled':''} onclick="actionProjet('deplacer',{sens:1})">Déplacer →</button><button class="sec petit" ${busy||p.blocs.length===1?'disabled':''} onclick="actionProjet('supprimer')">Retirer ce bloc</button></div>`:''}</div></div>${dernierExport}`;
   if(!transition) $('tl-ton').onchange=()=>{ const cle=$('tl-ton').value; const prompts={neutre:'She nods gently, her hands resting calmly.',curieux:'She raises her eyebrows with an intrigued expression, looking straight into the camera.',enthousiaste:'She gives a small soft shrug and a gentle closed-mouth smile, briefly turning her palms up on her lap.',reflechi:'She looks thoughtful, briefly lowering her eyes, then looks back into the camera.',serieux:'She leans slightly forward with a serious attentive look, then gently sits back.',chaleureux:'She smiles warmly with her mouth closed and nods in acknowledgement.'}; $('tl-prompt').value=prompts[cle]; TL_DIRTY=true; $('tl-save-state').textContent='Modifications non enregistrées'; };
 }
 async function requeteProjet(url,data) {
@@ -628,6 +632,52 @@ async function lancerProjet(action,element) {
 async function actionProjet(action,extra={}) {
   if(TL_DIRTY && !await enregistrerElement()) return;
   await requeteProjet('/api/projets/modifier',{action,element:ELEMENT,...extra});
+}
+
+// BEGIN PROGRESSION PARSER
+function analyserProgression(texte, etape='Préparation') {
+  // Scope progress to the current command, so a completed LTX pass is never
+  // displayed as the progress of a later FFmpeg/MuseTalk command.
+  const commande=texte.lastIndexOf('\n$ ');
+  const log=commande>=0?texte.slice(commande+1):texte;
+  const passes=[...log.matchAll(/Denoising:\s*(\d+)%[^\r\n]*?\|\s*(\d+)\/(\d+)\s*\[([^\]]*)\]/g)];
+  const derniere=passes.at(-1);
+  const marqueurs=[...log.matchAll(/\[(Loading text encoder[^\]]*|Encoding prompt|Loading transformer[^\]]*|Loading decoders[^\]]*|Decoding video[^\]]*)\]/g)];
+  const marqueur=marqueurs.at(-1);
+  if(derniere && (!marqueur || derniere.index>marqueur.index)) {
+    const total=Number(derniere[3]), fait=Number(derniere[2]);
+    const passe=total===3?'Affinage LTX · passe 2/2':total===8?'Animation LTX · passe 1/2':'Calcul LTX';
+    const restant=derniere[4].match(/<([\d:]+)/)?.[1];
+    return {label:passe,fait,total,pourcent:Math.min(100,Math.round(100*fait/total)),restant};
+  }
+  let label=etape;
+  if(marqueur) {
+    const m=marqueur[1];
+    label=m.startsWith('Loading text')?'Chargement de l’encodeur de texte':m==='Encoding prompt'?'Encodage de la consigne':m.startsWith('Loading transformer')?'Chargement du modèle vidéo':m.startsWith('Loading decoders')?'Chargement du décodeur':'Décodage de la vidéo';
+  } else if(/^\$ .*ffmpeg/.test(log)) label='Encodage / enregistrement du média';
+  return {label,pourcent:null};
+}
+// END PROGRESSION PARSER
+let SUIVI_TACHES={};
+async function chargerProgressions() {
+  const actives=E.taches.filter(t=>t.etat==='en cours');
+  await Promise.allSettled(actives.map(async t=>{
+    const j=await api('/api/journal/'+t.id), avant=SUIVI_TACHES[t.id], texte=j.texte||'';
+    SUIVI_TACHES[t.id]={texte,change:!avant||avant.texte!==texte?Date.now():avant.change,info:analyserProgression(texte,t.etape||'Préparation')};
+  }));
+  for(const id of Object.keys(SUIVI_TACHES)) if(!actives.some(t=>t.id===id)) delete SUIVI_TACHES[id];
+}
+function progressionHTML(t,actions=true) {
+  const s=SUIVI_TACHES[t.id], p=s?.info||{label:t.etape||'Préparation',pourcent:null};
+  const attente=t.etat==='en attente', age=s?Math.floor((Date.now()-s.change)/1000):null;
+  const ecoule=t.debut?Math.max(0,Date.now()/1000-t.debut):0;
+  const titre=({projet_clip:'Mini-clip',projet_pont:'Transition',projet_export:'Vidéo finale',video:'Vidéo',clip:'Mouvement',pont:'Transition',lipsync:'Synchronisation labiale'})[t.type]||'Génération';
+  return `<div class="suivi-calcul" role="status"><div class="suivi-entete"><strong>${titre} · ${esc(attente?'En attente':p.label)}</strong><span>${!attente&&p.pourcent!=null?p.pourcent+' % de la passe':''}</span></div><div class="barre ${attente||p.pourcent==null?'indeterminee':''}" role="progressbar" aria-label="${esc(attente?'En attente':p.label)}" aria-valuemin="0" aria-valuemax="100" ${!attente&&p.pourcent!=null?`aria-valuenow="${p.pourcent}"`:''}><div style="width:${p.pourcent??35}%"></div></div><div class="suivi-details">${attente?'La tâche démarrera après le calcul en cours.':`${p.fait!=null?`${p.fait} / ${p.total} étapes · `:''}${minsec(ecoule)} écoulées${p.restant?' · reste ≈ '+esc(p.restant)+' pour cette passe':''}`}</div>${!attente?`<div class="suivi-activite">${age==null?'Connexion au journal du moteur…':age<10?'● Nouvelle sortie du moteur reçue':`Dernière sortie reçue il y a ${minsec(age)}${age>=120?' · cette étape peut être silencieuse':''}`}</div>`:''}${actions?`<div class="suivi-actions">${t.params.projet?`<button class="sec petit" onclick="page('projets');ouvrirProjet('${js(t.params.projet)}')">Voir la timeline</button>`:''}<button class="sec petit" onclick="annuler('${t.id}')">Annuler</button></div>`:''}</div>`;
+}
+function afficherProgressions() {
+  const actives=E.taches.filter(t=>t.etat==='en cours'), attente=E.taches.filter(t=>t.etat==='en attente');
+  $('suivi-global').innerHTML=actives.map(t=>progressionHTML(t)).join('')+(actives.length&&attente.length?`<p class="mut" style="font-size:12px">${attente.length} tâche(s) en attente</p>`:'');
+  document.querySelectorAll('[data-suivi-tache]').forEach(el=>{const t=E.taches.find(t=>t.id===el.dataset.suiviTache);el.innerHTML=t&&['en cours','en attente'].includes(t.etat)?progressionHTML(t):'';});
 }
 
 let MODELES_SIGNATURE='', VOIX_MODELES=null;
