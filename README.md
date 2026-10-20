@@ -240,3 +240,7 @@ Studio Avatar's code is released under the [MIT License](LICENSE). External engi
 model weights, libraries, and user-supplied media retain their own licenses and are
 not included or relicensed by this repository. MuseTalk and the LTX ecosystem make
 the local generation workflow possible.
+
+### Raccords adaptés aux poses
+
+Les raccords analysent des miniatures du corps dans la fin du rush et les comparent à la première image du suivant. Ce score visuel est une approximation, pas une détection du squelette. Le point de coupe et la durée sont choisis ensemble pour réduire le déplacement et éviter une coupure pendant un geste rapide. La durée saisie est une préférence ; la durée retenue peut atteindre 1,3 seconde. Une coupe directe évite LTX si les images sont presque identiques. Les retours LTX utilisent leur cadence native de 24 images/s, sans compression temporelle. La voix reste continue et la durée totale ne change pas. Les anciens raccords sont à régénérer ; les rushs sont conservés.

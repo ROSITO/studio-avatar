@@ -178,13 +178,19 @@ def executer(t):
         if not courant(a) or not courant(z): raise ValueError('Les deux clips voisins doivent être prêts.')
         premiere=S.ICI/'ponts'/f'{suffix}-debut.png'; derniere=S.ICI/'ponts'/f'{suffix}-fin.png'
         # Dernière image réellement retenue au montage (le clip LTX peut dépasser la durée du bloc).
+        t['etape']='Analyse des poses pour le raccord'; S.sauver()
+        x['analyse_pose']=montage.analyser(S,t,p,x)
         retour=montage.raccord(p,x);n=retour['coupe']
         S.lancer(t,['ffmpeg','-v','error','-y','-i',S.ICI/'clips'/a['clip'],'-vf',f'select=eq(n\\,{n-1})','-frames:v','1','-update','1',premiere])
         S.lancer(t,['ffmpeg','-v','error','-y','-i',S.ICI/'clips'/z['clip'],'-frames:v','1','-update','1',derniere])
         W,H=S.taille_image(S.ICI/'clips'/a['clip']); out=S.ICI/'ponts'/f'{suffix}.mp4'
         t['etape']='Retour intégré à la pose commune'; S.sauver()
-        prompt='The same person smoothly moves from the first pose to the final pose. Mouth closed. Natural gentle motion, consistent face, clothing and background. Static camera.'
-        S.ltx(t,[(premiere,0),(derniere,'last')],prompt,W,H,S.images_ltx(retour['frames']+2),x['seed'],out)
+        prompt='The same person smoothly moves from the first pose to the final pose. Minimal movement, no new gesture, no overshoot. Natural gentle motion, consistent face, clothing and background. Static camera.'
+        if retour['frames']==0:
+            t['etape']='Coupe directe : poses déjà identiques'; S.sauver()
+            S.lancer(t,['ffmpeg','-v','error','-y','-loop','1','-i',derniere,'-frames:v','1','-r','24','-pix_fmt','yuv420p',out])
+        else:
+            S.ltx(t,[(premiere,0),(derniere,'last')],prompt,W,H,S.images_ltx(retour['frames']+2),x['seed'],out)
         S.lancer(t,['ffmpeg','-v','error','-y','-i',out,'-frames:v','1','-vf','scale=320:-2',out.with_suffix('.jpg')])
         x['clip']=out.name; x['rendu_revision']=x['revision']; x['extremites']=[a['clip'],z['clip']]
         x.update(raccord_version=montage.VERSION,coupe_frame=retour['coupe'],frames_cible=retour['frames'])
