@@ -22,3 +22,10 @@ const node={innerHTML:''};
 Object.assign(context,{E:{taches:[{id:'test',type:'projet_clip',params:{},etat:'en cours'}]},esc:s=>String(s),minsec:s=>String(s),$:()=>node,document:{querySelectorAll:()=>[]}});
 vm.runInContext(html.split('let SUIVI_TACHES={}')[1].split('let MODELES_SIGNATURE')[0].replace(/^;/,'').replace(/^/,'let SUIVI_TACHES={};'),context);
 context.afficherProgressions();assert.match(node.innerHTML,/Annuler<\/button>/);
+
+// API returns newest tasks first: a queued bridge must never hide the running clip.
+const waiting={id:'bridge',params:{projet:'p'},etat:'en attente',cree:2};
+const running={id:'clip3',params:{projet:'p'},etat:'en cours',cree:1};
+assert.equal(context.choisirTacheProjet([waiting,running],'p').id,'clip3');
+assert.equal(context.choisirTacheProjet([waiting,{...waiting,id:'older',cree:0}],'p').id,'older');
+assert.equal(context.choisirTacheProjet([running],'other'),undefined);

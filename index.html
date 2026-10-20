@@ -605,7 +605,7 @@ function dessinerProjets() {
   if(TL_DIRTY || signature===TL_EMPREINTE) return;
   if(!p.blocs.some(b=>b.id===ELEMENT) && !p.transitions.some(b=>b.id===ELEMENT)) ELEMENT=p.blocs[0].id;
   TL_EMPREINTE=signature;
-  const activeJob=E.taches.find(t=>t.params.projet===p.id && ['en attente','en cours'].includes(t.etat));
+  const activeJob=choisirTacheProjet(E.taches,p.id);
   const busy=travailProjet(p), x=[...p.blocs,...p.transitions].find(b=>b.id===ELEMENT), transition=!!x.gauche;
   const t=tacheElement(p,x), toutPret=p.blocs.every(clipCourant)&&p.transitions.every(b=>pontCourant(p,b));
   let cumul=0;
@@ -661,6 +661,10 @@ function analyserProgression(texte, etape='Préparation') {
     label=m.startsWith('Loading text')?'Chargement de l’encodeur de texte':m==='Encoding prompt'?'Encodage de la consigne':m.startsWith('Loading transformer')?'Chargement du modèle vidéo':m.startsWith('Loading decoders')?'Chargement du décodeur':'Décodage de la vidéo';
   } else if(/^\$ .*ffmpeg/.test(log)) label='Encodage / enregistrement du média';
   return {label,pourcent:null};
+}
+function choisirTacheProjet(taches,pid) {
+  const projet=taches.filter(t=>t.params.projet===pid);
+  return projet.find(t=>t.etat==='en cours') || projet.filter(t=>t.etat==='en attente').sort((a,b)=>a.cree-b.cree)[0];
 }
 // END PROGRESSION PARSER
 let SUIVI_TACHES={};
