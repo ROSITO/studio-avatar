@@ -63,8 +63,8 @@ Open [http://127.0.0.1:8765](http://127.0.0.1:8765). On macOS you can also run
 
 ## Configure generation engines
 
-The studio orchestrates external tools; it does not install engines or download
-model weights automatically. Install each engine in its own environment, obtain
+The studio orchestrates external tools. Install the engines separately; model
+weights can then be downloaded explicitly from the **Modèles** page. Install each engine in its own environment, obtain
 its required models, and follow its upstream setup instructions and licenses.
 
 1. Install an [LTX-2-MLX](https://github.com/dgrauet/ltx-2-mlx) CLI supporting `generate`, `--image`, `--distilled`,
@@ -97,6 +97,51 @@ Once configured: **Nouvelle vidéo → Créer le projet → Mes projets**. Creat
 project first, generate selected clips/transitions, and finally choose
 **Assembler et synchroniser**. Previous exported videos remain under **Mes vidéos**.
 
+## Model catalogue and downloads
+
+The **Modèles** page provides:
+
+- LTX-2.3 Q4, Q8, and BF16 packs for the current distilled recipe;
+- the shared Gemma 3 12B 4-bit text encoder;
+- MuseTalk 1.5 weights with SD-VAE, Whisper, DWPose, and face-parsing components;
+- discovery of installed packs and imports of existing local LTX-2.3 folders;
+- persisted selection for subsequent jobs, without rebuilding existing clips;
+- the live VoiceStudio TTS engine catalogue and per-synthesis engine selection.
+
+Click **Vérifier la taille** to resolve upstream manifests and show the actual bytes
+for the files used by this recipe. Click **Télécharger / reprendre** to download.
+Files are fetched at pinned repository revisions, streamed to `.part` files,
+verified against SHA-256 or Git blob hashes, then renamed atomically. Transfers
+support cancellation and resumption; interrupted transfers are not restarted
+without an explicit request. Available disk space is checked before downloading.
+No remote Python code is downloaded or executed by the manager.
+
+Packs are stored in `STUDIO_MODELS_DIR/catalogue/`. The previous
+`STUDIO_MODELS_DIR/ltx-2.3-q4` layout and an existing shared Gemma HF cache are
+automatically detected. MuseTalk components are stored in
+`STUDIO_MUSETALK_ROOT/models/` because the upstream adapter expects this layout.
+The FaceAlignment package may separately obtain its detector/landmark checkpoints
+through its own PyTorch cache; engine dependencies are not installed by this page.
+
+Review the upstream license links before installing. Restricted repositories may
+require accepting their terms on Hugging Face and setting `HF_TOKEN` in the server
+environment. The token is never returned to the UI or stored in Studio Avatar's
+preferences. It is stripped from cross-host redirects.
+
+Model switches and weight installations are blocked while generation jobs are
+pending or running. Each timeline job records its selection when queued. Existing
+clips and audio are retained: changing the voice engine does not replace audio
+that a block has already generated. Voice engine packages/weights continue to be
+installed and licensed by VoiceStudio; Studio Avatar lists available engines and
+passes the chosen `engine` to its compatible `/generate` API. Legacy speech servers
+without `/engines/tts` still work with the original speech interface.
+
+Model choices, imported absolute paths, download manifests, and progress are private
+runtime state (`modeles.json` and `.modeles-*.json`), excluded from Git. The tests
+exercise resumption, ignored HTTP Range requests, corruption, cancellation, disk
+space checks, selection persistence, import validation, and redirect token handling
+without downloading large weights.
+
 ## Data and local security
 
 Runtime directories (`sources`, `audios`, `clips`, `ponts`, `sequences`, `lipsync`,
@@ -112,7 +157,7 @@ behavior. Only use images and voices you have permission to use.
 
 ```bash
 python3 -m unittest discover -p 'test_*.py' -v
-python3 -m py_compile studio.py projets.py lancer_musetalk15.py visage.py
+python3 -m py_compile studio.py projets.py modeles.py lancer_musetalk15.py visage.py
 ```
 
 Tests create synthetic media in temporary directories and exercise real FFmpeg
@@ -120,7 +165,8 @@ assembly. LTX, MuseTalk, and speech generation are replaced by test implementati
 no model weights, personal assets, speech server, or GPU are needed. CI runs the
 same suite on Python 3.10 and 3.14.
 
-The server lives in `studio.py`, persistent timeline logic in `projets.py`, and the
+The server lives in `studio.py`, persistent timeline logic in `projets.py`, the model manager in
+`modeles.py`, and the
 French web UI in `index.html`. Legacy library-based generation remains available
 for compatibility, while the new creation flow uses persistent TAG projects.
 

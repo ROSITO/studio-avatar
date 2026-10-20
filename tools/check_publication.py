@@ -8,7 +8,7 @@ private_dirs = {'sources', 'audios', 'clips', 'ponts', 'sequences', 'lipsync', '
 errors = []
 for name in filter(None, files):
     p = Path(name)
-    if p.parts[0] in private_dirs or p.name in {'taches.json', '.env', 'brandkit.png'} or p.suffix in {'.mp4', '.wav', '.mp3', '.pth', '.safetensors'}:
+    if p.parts[0] in private_dirs or p.name in {'taches.json', '.env', 'brandkit.png', 'modeles.json', '.modeles-etat.json', '.modeles-plans.json'} or p.suffix in {'.mp4', '.wav', '.mp3', '.pth', '.safetensors'}:
         errors.append(name + ': private/runtime artifact')
     data = (root / p).read_bytes()
     # Assembled patterns keep this checker from matching itself.

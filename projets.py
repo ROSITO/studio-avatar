@@ -99,7 +99,7 @@ def modifier(pid,d):
 def ajouter_tache(p,genre,e=None):
     params=dict(projet=p['id'],element=e['id'] if e else None)
     if any(t['type']=='projet_'+genre and t['params']==params and t['etat'] in ('en attente','en cours') for t in S.TACHES): return
-    S.TACHES.append(dict(id=ident(),type='projet_'+genre,params=params,etat='en attente',cree=time.time()))
+    S.TACHES.append(dict(id=ident(),type='projet_'+genre,params=params,modeles=S.GESTION_MODELES.selection(),etat='en attente',cree=time.time()))
 def lancer(pid,d):
     with VERROU:
         p=lire(pid); action=d['action']
@@ -165,6 +165,7 @@ def executer(t):
     else:
         exporter(t,p); return
     if t.get('annuler'): raise RuntimeError('Tâche annulée')
+    x['modele'] = (t.get('modeles') or S.GESTION_MODELES.selection())['video']['id']
     with VERROU: sauver(p)
     t['resultat']=dict(projet=pid,element=x['id'],fichier=x['clip'])
 

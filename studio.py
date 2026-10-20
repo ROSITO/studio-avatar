@@ -111,8 +111,11 @@ def lancer(t, cmd, env=None):
     if code: raise RuntimeError(f'commande terminée avec le code {code} (voir le journal)')
 
 def ltx(t, images, prompt, W, H, frames, seed, sortie):
-    if not (MODELES / 'ltx-2.3-q4').exists(): raise RuntimeError('Modèles LTX introuvables : configurez STUDIO_MODELS_DIR')
-    cmd = [LTX, 'generate', '--model', MODELES / 'ltx-2.3-q4']
+    choix = t.get('modeles') or GESTION_MODELES.selection()
+    video, texte = choix['video'], choix['texte']
+    if not video['installe']: raise RuntimeError('Installez ou importez le modèle vidéo dans la page Modèles.')
+    if not texte['installe']: raise RuntimeError('Installez l’encodeur Gemma dans la page Modèles.')
+    cmd = [LTX, 'generate', '--model', video['path'], '--gemma', texte['path']]
     for img, idx, *force in images: cmd += ['--image', img, idx, force[0] if force else '1.0']
     tmp = sortie.with_suffix('.tmp.mp4')
     cmd += ['--prompt', prompt, '--distilled', '--low-ram', '-H', H, '-W', W, '-f', frames, '--frame-rate', '24', '--no-audio', '--seed', seed, '-o', tmp]
@@ -121,6 +124,7 @@ def ltx(t, images, prompt, W, H, frames, seed, sortie):
 
 def faire(t):
     p = t['params']
+    if 'modeles' not in t: t['modeles'] = GESTION_MODELES.selection()
     if t['type'].startswith('projet_'):
         projets.executer(t); return
     if t['type'] == 'clip':
@@ -349,11 +353,13 @@ def clips_avatar(source):
             if f.with_suffix('.json').exists() and json.loads(f.with_suffix('.json').read_text()).get('source') == source]
 
 def musetalk(t, video, audio, out, shift):
+    choix = t.get('modeles') or GESTION_MODELES.selection()
+    if not choix['lipsync']['installe']: raise RuntimeError('Installez le pack MuseTalk dans la page Modèles.')
     wav = ICI / 'lipsync' / f"{t['id']}-16k.wav"; v25 = ICI / 'lipsync' / f"{t['id']}-25fps.mp4"
     subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', audio, '-ar', '16000', '-ac', '1', wav], check=True)
     subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', video, '-vf', 'fps=25', '-an', '-c:v', 'libx264', '-crf', '14', '-pix_fmt', 'yuv420p', v25], check=True)
     brut = out.with_suffix('.tmp.mp4')
-    try: lancer(t, [MUSE_PY, ICI / 'lancer_musetalk15.py', v25, wav, brut, shift], {'PYTORCH_ENABLE_MPS_FALLBACK': '1'})
+    try: lancer(t, [MUSE_PY, ICI / 'lancer_musetalk15.py', v25, wav, brut, shift], {'PYTORCH_ENABLE_MPS_FALLBACK': '1', 'STUDIO_MUSETALK_ROOT': str(GESTION_MODELES.muse_root)})
     finally: wav.unlink(missing_ok=True); v25.unlink(missing_ok=True)
     # MuseTalk remet l'audio 16 kHz : on remet l'audio d'origine en pleine qualité
     subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', brut, '-i', audio, '-map', '0:v', '-map', '1:a', '-c:v', 'copy',
@@ -365,6 +371,8 @@ def voix(t, texte, profil, langue, out):
     import urllib.request, urllib.parse
     champs = dict(text=texte, language=langue, profile_id=profil, seed='42', guidance_scale='2', effect_preset='raw',
                   wav_bits='24', postprocess_output='false', crossfade_ms='0')
+    engine = (t.get('modeles') or GESTION_MODELES.selection()).get('voix', {}).get('id')
+    if engine: champs['engine'] = engine
     with open(ICI / 'taches' / f"{t['id']}.log", 'a') as log: log.write(f'VoiceStudio : {len(texte)} caractères, profil {profil}\n')
     try:
         with urllib.request.urlopen(urllib.request.Request(f'{VOICESTUDIO}/generate', data=urllib.parse.urlencode(champs).encode()), timeout=1800) as r:
@@ -410,8 +418,10 @@ class H(BaseHTTPRequestHandler):
         if u.path == '/': return self.envoyer(ICI / 'index.html', 'text/html; charset=utf-8')
         if u.path == '/api/etat':
             libs = {s.name: lib_avatar(s.name) for s in (ICI / 'sources').iterdir() if not s.name.startswith('.')}
-            return self.json(dict(taches=TACHES[-60:][::-1], fichiers=fichiers(), t7=(MODELES / 'ltx-2.3-q4').exists(), base_clip=BASE_CLIP,
+            return self.json(dict(taches=TACHES[-60:][::-1], fichiers=fichiers(), t7=GESTION_MODELES.selection()['video']['installe'], base_clip=BASE_CLIP,
                                   tons=[dict(cle=k, nom=n, emoji=e, balise=bs[0]) for k, n, e, bs, _ in TONS], balises=BALISES, libs=libs))
+        if u.path == '/api/modeles/voix': return self.json(GESTION_MODELES.voix_catalogue())
+        if u.path == '/api/modeles': return self.json(GESTION_MODELES.catalogue())
         if u.path == '/api/projets': return self.json(projets.liste())
         if u.path == '/api/voix':
             import urllib.request
@@ -454,6 +464,18 @@ class H(BaseHTTPRequestHandler):
         self.send_error(400)
     def do_POST(self):
         u = urlparse(self.path); d = json.loads(self.corps() or b'{}')
+        if u.path == '/api/modeles':
+            try:
+                action = d.get('action')
+                if action == 'analyser': GESTION_MODELES.commencer(d.get('id'))
+                elif action == 'telecharger': GESTION_MODELES.commencer(d.get('id'), True)
+                elif action == 'annuler': GESTION_MODELES.cancel.set()
+                elif action == 'voix': GESTION_MODELES.choisir_voix(d.get('id'))
+                elif action == 'choisir': GESTION_MODELES.choisir(d.get('id'))
+                elif action == 'importer': GESTION_MODELES.importer(d.get('path', ''), d.get('nom', ''))
+                else: raise ValueError('Action inconnue')
+                return self.json(GESTION_MODELES.catalogue())
+            except (ValueError, OSError) as e: return self.json(dict(erreur=str(e)), 400)
         if u.path.startswith('/api/projets'):
             try:
                 if u.path == '/api/projets': resultat = projets.creer(d)
@@ -489,6 +511,8 @@ class H(BaseHTTPRequestHandler):
         self.send_error(404)
 
 import projets
+import modeles
+GESTION_MODELES = modeles.Gestionnaire(sys.modules[__name__])
 projets.installer(sys.modules[__name__])
 
 if __name__ == '__main__':

@@ -26,3 +26,7 @@ venv/
 *.ckpt
 *.pth
 *.pt
+
+# Private model selections and download metadata
+/modeles.json
+/.modeles-*.json
