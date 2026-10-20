@@ -1,0 +1,31 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  tests:
+    name: Python ${{ matrix.python }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.10', '3.14']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install FFmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Compile Python
+        run: python -m py_compile studio.py projets.py lancer_musetalk15.py visage.py
+      - name: Test persistent timeline and media assembly
+        run: python -m unittest discover -p 'test_*.py' -v
+      - name: Validate browser script syntax
+        run: node -e 'const fs = require("fs"); new Function(fs.readFileSync("index.html", "utf8").split("<script>")[1].split("</script>")[0]);'
+      - name: Verify publication boundary
+        run: python tools/check_publication.py

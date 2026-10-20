@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and setup help
+    url: https://github.com/ROSITO/studio-avatar/discussions
+    about: Ask the community about usage or installation.
+  - name: Private security report
+    url: https://github.com/ROSITO/studio-avatar/security/advisories/new
+    about: Do not disclose vulnerabilities in public issues.

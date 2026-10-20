@@ -1,0 +1,632 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Studio avatar</title>
+<style>
+:root { --bg:#0c0c10; --pan:#15151b; --pan2:#1d1d25; --txt:#ececf1; --mut:#9a9aa8; --acc:#ffd23f; --ok:#4ade80; --err:#f87171; --bord:#2a2a34; }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--txt); font:15px/1.5 -apple-system, system-ui, sans-serif; display:flex; min-height:100vh; }
+#menu { width:230px; flex:0 0 230px; background:var(--pan); border-right:1px solid var(--bord); padding:22px 14px; display:flex; flex-direction:column; gap:4px; position:sticky; top:0; height:100vh; }
+#menu h1 { font-size:16px; color:var(--acc); letter-spacing:.6px; margin:0 10px 22px; }
+#menu button { display:flex; align-items:center; gap:10px; width:100%; text-align:left; background:none; color:var(--mut); border:0; border-radius:10px; padding:11px 12px; font:inherit; cursor:pointer; }
+#menu button:hover { background:var(--pan2); color:var(--txt); }
+#menu button.actif { background:var(--pan2); color:var(--txt); font-weight:600; }
+#menu .ic { width:20px; text-align:center; }
+#menu .compte { margin-left:auto; background:var(--acc); color:#111; border-radius:99px; font-size:12px; padding:0 8px; font-weight:700; }
+#menu .bas { margin-top:auto; border-top:1px solid var(--bord); padding-top:12px; }
+.etatsys { font-size:12px; color:var(--mut); padding:4px 12px; }
+.etatsys b.ok { color:var(--ok); } .etatsys b.err { color:var(--err); }
+#contenu { flex:1; padding:30px 36px; max-width:1100px; }
+.page { display:none; } .page.actif { display:block; }
+h2 { font-size:24px; margin:0 0 6px; }
+.intro { color:var(--mut); margin:0 0 24px; }
+.etapes { display:flex; gap:8px; margin-bottom:26px; }
+.etapes div { flex:1; padding:10px 12px; border-radius:10px; background:var(--pan); border:1px solid var(--bord); color:var(--mut); font-size:14px; }
+.etapes div b { display:inline-grid; place-items:center; width:22px; height:22px; border-radius:50%; background:var(--pan2); margin-right:8px; font-size:12px; }
+.etapes div.fait { color:var(--txt); } .etapes div.fait b { background:var(--ok); color:#111; }
+.etapes div.ici { border-color:var(--acc); color:var(--txt); } .etapes div.ici b { background:var(--acc); color:#111; }
+.etape { display:none; } .etape.actif { display:block; }
+.question { font-size:19px; font-weight:600; margin:0 0 16px; }
+.navig { display:flex; justify-content:space-between; align-items:center; margin-top:28px; padding-top:20px; border-top:1px solid var(--bord); gap:12px; }
+button { background:var(--acc); color:#111; border:0; border-radius:10px; padding:11px 20px; cursor:pointer; font:inherit; font-weight:600; }
+button.sec { background:var(--pan2); color:var(--txt); border:1px solid var(--bord); font-weight:500; }
+button.petit { padding:5px 11px; font-size:13px; border-radius:8px; }
+button.gros { padding:14px 30px; font-size:17px; }
+button:disabled { opacity:.35; cursor:not-allowed; }
+label { display:block; font-size:13px; color:var(--mut); margin:16px 0 6px; }
+input, select, textarea { width:100%; background:var(--pan2); color:var(--txt); border:1px solid var(--bord); border-radius:10px; padding:10px 12px; font:inherit; }
+textarea { min-height:180px; resize:vertical; }
+.grille { display:grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap:16px; }
+.carte { background:var(--pan); border:2px solid var(--bord); border-radius:14px; overflow:hidden; position:relative; }
+.carte.cliq { cursor:pointer; } .carte.cliq:hover { border-color:#4a4a58; }
+.carte.sel { border-color:var(--acc); }
+.carte img.photo, .carte video { width:100%; aspect-ratio:3/4; object-fit:cover; display:block; background:#000; }
+.carte .corps { padding:10px 12px; font-size:13px; }
+.carte .titre { font-weight:600; font-size:14px; word-break:break-all; }
+.mut { color:var(--mut); }
+.coche { position:absolute; top:10px; right:10px; width:28px; height:28px; border-radius:50%; background:var(--acc); color:#111; display:none; place-items:center; font-weight:800; }
+.carte.sel .coche { display:grid; }
+.etiq { display:inline-block; font-size:11.5px; padding:2px 8px; border-radius:6px; margin-top:4px; background:var(--pan2); }
+.etiq.mvt { color:var(--ok); } .etiq.photo { color:#93c5fd; } .etiq.prep { color:var(--acc); }
+.depot { display:grid; place-items:center; text-align:center; aspect-ratio:3/4; border:2px dashed #3a3a46; border-radius:14px; color:var(--mut); cursor:pointer; padding:16px; }
+.depot:hover, .depot.survol { border-color:var(--acc); color:var(--txt); background:#ffd23f0d; }
+.depot .plus { font-size:34px; line-height:1; color:var(--acc); }
+.choix2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.choix { border:2px solid var(--bord); border-radius:14px; padding:20px; cursor:pointer; background:var(--pan); }
+.choix:hover { border-color:#4a4a58; } .choix.sel { border-color:var(--acc); }
+.choix.off { opacity:.45; cursor:not-allowed; }
+.choix .t { font-weight:600; font-size:16px; margin-bottom:4px; }
+.encadre { background:var(--pan); border:1px solid var(--bord); border-radius:14px; padding:20px; margin-top:18px; }
+.recap { display:grid; grid-template-columns:160px 1fr; gap:22px; align-items:start; }
+.recap img { width:160px; border-radius:12px; aspect-ratio:3/4; object-fit:cover; }
+.recap dl { margin:0; display:grid; grid-template-columns:140px 1fr; gap:10px 14px; }
+.recap dt { color:var(--mut); } .recap dd { margin:0; }
+.alerte { background:#f871711a; border:1px solid #f8717155; color:#fecaca; border-radius:10px; padding:10px 14px; margin-top:8px; font-size:14px; }
+.info { background:#ffd23f12; border:1px solid #ffd23f44; border-radius:10px; padding:12px 14px; margin-top:14px; font-size:14px; }
+.barre { height:8px; background:var(--pan2); border-radius:99px; overflow:hidden; margin:10px 0 6px; }
+.barre div { height:100%; background:var(--acc); transition:width 1s; }
+.ligne-video { display:grid; grid-template-columns:180px 1fr auto; gap:18px; align-items:center; background:var(--pan); border:1px solid var(--bord); border-radius:14px; padding:14px; margin-bottom:12px; }
+.ligne-video video, .ligne-video img { width:180px; border-radius:10px; aspect-ratio:3/4; object-fit:cover; background:#000; }
+.vide { color:var(--mut); padding:30px; text-align:center; border:1px dashed var(--bord); border-radius:14px; }
+pre { background:#000; color:#cfcfd8; padding:8px; border-radius:8px; max-height:220px; overflow:auto; white-space:pre-wrap; font-size:11.5px; }
+details { margin-top:10px; } details summary { cursor:pointer; color:var(--mut); font-size:13px; }
+.tonbtn { background:var(--pan2); border:1px solid var(--bord); color:var(--txt); border-radius:99px; padding:5px 12px; font-size:13px; font-weight:500; }
+.tonbtn:hover { border-color:var(--acc); }
+.sb { display:grid; grid-template-columns:150px 1fr 70px; gap:12px; align-items:start; padding:9px 12px; border-bottom:1px solid var(--bord); font-size:14px; }
+.sb:last-child { border:0; } .sb .ton { font-weight:600; } .sb .avert { color:var(--acc); font-size:12px; }
+.storyboard { background:var(--pan); border:1px solid var(--bord); border-radius:12px; margin-top:12px; }
+.situ { margin-top:18px; } .situ h4 { margin:0 0 8px; font-size:15px; }
+.avance section { background:var(--pan); border:1px solid var(--bord); border-radius:14px; padding:18px; margin-bottom:18px; }
+.avance h3 { margin:0 0 10px; font-size:16px; }
+.ligne { display:flex; gap:12px; flex-wrap:wrap; } .ligne > * { flex:1; min-width:140px; }
+@media (max-width: 860px) { body { flex-direction:column; } #menu { width:auto; height:auto; position:static; flex-direction:row; flex-wrap:wrap; } #menu .bas { margin:0; border:0; padding:0; } #contenu { padding:20px 16px; } .choix2, .recap { grid-template-columns:1fr; } .ligne-video { grid-template-columns:1fr; } }
+
+[hidden] { display:none!important; }
+/* Studio Avatar · identité issue de brandkit.png */
+:root { --bg:#0b0f14; --pan:#111820; --pan2:#19222d; --txt:#f8f9fa; --mut:#a4afbf; --acc:#ffc629; --ok:#8bd5af; --err:#ff9696; --bord:#27313d; }
+body { font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; font-size:14px; background:radial-gradient(ellipse at 85% 0%,#1d293544,transparent 45%),var(--bg); }
+#menu { width:248px; flex-basis:248px; padding:32px 18px 22px; background:#0d131a; gap:8px; }
+#menu h1 { display:flex; align-items:center; gap:11px; margin:0 10px 44px; font-size:21px; line-height:1.05; letter-spacing:-.8px; color:var(--txt); }
+.brand-mark { width:43px; height:43px; flex-shrink:0; }
+.brand-name span { color:var(--acc); }
+.menu-label { padding:0 14px; margin-bottom:8px; color:#788699; font-size:10px; font-weight:600; letter-spacing:1.8px; text-transform:uppercase; }
+#menu button { border:1px solid transparent; padding:12px 14px; border-radius:8px; font-size:13px; transition:background .2s,color .2s; }
+#menu button.actif { background:#ffc62912; border-color:#ffc62930; color:var(--acc); }
+#menu .ic { width:20px; display:inline-flex; justify-content:center; }
+.ic svg { width:19px; height:19px; fill:none; stroke:currentColor; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
+#menu .bas { padding-top:18px; }
+.etatsys { font-size:11px; padding:6px 14px; }
+.local-note { display:flex; align-items:center; gap:8px; margin:22px 14px 0; font-size:11px; color:var(--mut); }
+.local-note i { height:6px; width:6px; border-radius:50%; background:var(--acc); }
+#contenu { max-width:1450px; width:100%; padding:0 48px 40px; min-width:0; }
+.topbar { height:87px; border-bottom:1px solid var(--bord); display:flex; align-items:center; justify-content:space-between; margin-bottom:34px; font-size:12px; color:var(--mut); }
+.topbar strong { color:var(--txt); font-weight:500; }
+.topbar .tag { border:1px solid var(--bord); border-radius:6px; padding:5px 10px; font-size:10px; letter-spacing:1px; }
+.hero { padding:30px 34px; margin-bottom:30px; position:relative; overflow:hidden; border:1px solid #35414b; border-radius:16px; background:linear-gradient(110deg,#18232c,#111920 65%,#3a3220); }
+.hero:after { content:""; position:absolute; right:-30px; top:-100px; width:330px; height:330px; border:1px solid #ffc62921; border-radius:50%; box-shadow:0 0 0 40px #ffc62905,0 0 0 80px #ffc62903; pointer-events:none; }
+.eyebrow { color:var(--acc); text-transform:uppercase; letter-spacing:2px; font-size:10px; font-weight:600; margin-bottom:13px; }
+h2 { font-size:36px; line-height:1.15; letter-spacing:-1.25px; font-weight:650; }
+.hero h2 span { color:var(--acc); }
+.hero .intro { margin:14px 0 0; max-width:510px; font-size:13px; line-height:1.75; }
+.hero-foot { display:flex; gap:22px; margin-top:23px; color:#cbd5e1; font-size:11px; }
+.hero-foot span::before { content:'✓'; color:var(--acc); margin-right:7px; }
+.etapes { gap:0; margin:0 0 30px; padding-bottom:26px; border-bottom:1px solid var(--bord); }
+.etapes div { border:0; background:none; padding:0 12px; font-size:12px; position:relative; }
+.etapes div:first-child { padding-left:0; }
+.etapes div:not(:last-child):after { content:'→'; position:absolute; right:10px; color:#516070; }
+.etapes div b { height:30px; width:30px; margin-right:10px; background:#1b2530; border:1px solid var(--bord); }
+.etapes div.ici { color:var(--acc); }
+.etapes div.ici b { border-color:var(--acc); box-shadow:0 0 0 4px #ffc6290b; }
+.question { font-size:19px; letter-spacing:-.35px; margin-bottom:6px; }
+.section-intro { color:var(--mut); font-size:12px; margin:0 0 22px; }
+.grille { grid-template-columns:repeat(auto-fill,minmax(205px,1fr)); gap:20px; }
+#choix-avatar,#grille-avatars { grid-template-columns:repeat(auto-fill,minmax(205px,255px)); }
+.carte { border:1px solid var(--bord); border-radius:12px; transition:transform .2s,border-color .2s,box-shadow .2s; }
+.carte.cliq:hover { transform:translateY(-4px); border-color:#657181; box-shadow:0 14px 35px #0004; }
+.carte.sel { border-color:var(--acc); box-shadow:0 0 0 2px #ffc62925; }
+.carte .corps { padding:15px 16px 17px; }
+.carte .titre { font-size:14px; margin-bottom:7px; word-break:break-word; }
+.carte img.photo { aspect-ratio:4/4.5; object-position:50% 25%; }
+.etiq { font-size:10px; border:1px solid #8bd5af26; border-radius:4px; padding:2px 6px; background:#8bd5af0a; }
+.etiq.photo { border-color:#93c5fd26; background:#93c5fd0a; }
+.etiq.prep { border-color:#ffc62926; background:#ffc6290a; }
+.coche { width:25px; height:25px; box-shadow:0 2px 12px #0005; font-size:13px; }
+.depot { aspect-ratio:auto; min-height:290px; border:1px dashed #475569; border-radius:12px; background:linear-gradient(145deg,#16202a70,#11182030); font-size:12px; transition:border-color .2s,background .2s; }
+.depot .plus { display:grid; place-items:center; border:1px solid #ffc62945; border-radius:12px; width:48px; height:48px; margin:0 auto 20px; font-size:28px; background:#ffc6290a; }
+.depot b { color:var(--txt); font-size:14px; font-weight:500; }
+.depot i { font-style:normal; color:#728197; }
+button { border-radius:8px; color:#0b0f14; font-size:13px; padding:12px 21px; transition:filter .2s,transform .2s; }
+button:not(:disabled):hover { filter:brightness(1.09); }
+button:disabled { opacity:.4; }
+button.sec { background:#18212b; }
+button:focus-visible,.carte:focus-visible,.depot:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible { outline:2px solid var(--acc); outline-offset:4px; }
+.navig { margin-top:30px; padding-top:22px; }
+.navig .mut { font-size:12px; }
+#suiv-1::after,#suiv-2::after { content:'→'; margin-left:22px; }
+.choix { border-width:1px; padding:24px; transition:border-color .2s; }
+.choix.sel { background:#ffc62908; box-shadow:0 0 0 1px var(--acc); }
+.choix .mut { font-size:13px; line-height:1.7; }
+input,select,textarea { border-radius:8px; background:#101720; }
+.info { color:#e2d5ac; background:#ffc62908; border-color:#ffc62935; }
+.alerte { color:#ffb6b6; }
+.page > h2 { margin-top:44px; }
+.page > .intro { margin-top:12px; font-size:13px; max-width:780px; }
+.ligne-video { padding:20px; gap:24px; }
+.ligne-video video,.ligne-video img { width:160px; }
+pre { background:#080c11; }
+@media(min-width:1500px) { #contenu { margin:0 auto; } }
+@media(max-width:1100px) { #menu { width:215px; flex-basis:215px; } #contenu { padding:0 28px 30px; } #menu h1 { font-size:19px; } .hero { padding:26px; } h2 { font-size:31px; } }
+@media(max-width:860px) { #menu { width:100%; height:auto; flex-basis:auto; position:static; padding:18px; gap:6px; align-items:center; } #menu h1 { margin:0 18px 0 0; font-size:18px; } .brand-mark { width:32px; height:32px; } .menu-label,.local-note,#menu .bas .etatsys { display:none; } #menu button { width:auto; padding:10px; } #menu .bas { padding:0; margin-left:auto; } .topbar { height:60px; margin-bottom:20px; } #contenu { padding:0 20px 28px; } .hero { margin-bottom:25px; } .choix2,.recap { grid-template-columns:1fr; } .ligne-video { grid-template-columns:1fr; } }
+@media(max-width:540px) { #menu { gap:3px; } #menu h1 { width:100%; margin:0 0 15px; } #menu button { font-size:11px; gap:6px; } #menu .bas { margin-left:0; } #contenu { padding:0 16px 24px; } .topbar .tag { font-size:8px; } .hero { padding:23px 20px; } h2 { font-size:29px; } .hero-foot { gap:10px; flex-wrap:wrap; font-size:10px; } .etapes div { font-size:10px; padding:0 4px; display:flex; flex-direction:column; gap:9px; } .etapes div b { margin:0; } .etapes div:not(:last-child):after { top:5px; } #choix-avatar,#grille-avatars { grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; } .depot { min-height:250px; padding:10px; } .carte .corps { padding:12px 10px; } .carte .titre { font-size:12px; } .etiq { font-size:9px; } .navig { align-items:flex-start; } .navig .mut { max-width:55%; } .recap dl { grid-template-columns:1fr; gap:5px; } .recap dd { margin-bottom:12px; } .sb { grid-template-columns:1fr; } }
+@media(prefers-reduced-motion:reduce) { *,*::before,*::after { transition:none!important; } }
+
+
+.timeline-toolbar { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin:22px 0; }
+.timeline-toolbar h3 { margin:0 auto 0 0; }
+.timeline-strip { display:flex; overflow-x:auto; gap:12px; padding:8px 3px 20px; align-items:stretch; scroll-snap-type:x proximity; }
+.tl-item { flex:0 0 210px; scroll-snap-align:start; border:1px solid var(--bord); background:var(--pan); border-radius:12px; padding:14px; color:var(--txt); cursor:pointer; text-align:left; font-weight:400; }
+.tl-item.selected { border-color:var(--acc); box-shadow:0 0 0 1px var(--acc); }
+.tl-item.transition { flex-basis:150px; background:#ffc62906; }
+.tl-item img { width:100%; height:100px; object-fit:cover; border-radius:6px; margin:10px 0; }
+.tl-item .tl-placeholder { height:100px; display:grid; place-items:center; font-size:25px; color:var(--mut); margin:10px 0; background:var(--pan2); border-radius:6px; }
+.tl-item p { font-size:12px; color:var(--mut); margin:8px 0; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+.tl-status { display:block; font-size:11px; color:var(--acc); margin-top:8px; }
+.tl-status.ready { color:var(--ok); }
+.tl-editor { display:grid; grid-template-columns:minmax(200px, .8fr) minmax(0,1.2fr); gap:28px; border:1px solid var(--bord); background:var(--pan); padding:24px; border-radius:14px; }
+.tl-preview video,.tl-preview img { width:100%; max-height:440px; object-fit:contain; background:#080c11; border-radius:10px; }
+.tl-fields label:first-child { margin-top:0; }
+.tl-fields textarea { min-height:90px; }
+.tl-actions { display:flex; flex-wrap:wrap; gap:10px; margin-top:20px; }
+.tl-project { display:flex; justify-content:space-between; align-items:center; gap:20px; padding:20px; margin:12px 0; background:var(--pan); border:1px solid var(--bord); border-radius:12px; }
+.tl-project h3 { margin:0 0 6px; }
+.tl-project p { margin:0; font-size:12px; color:var(--mut); }
+.tl-error { color:var(--err); font-size:12px; margin-top:12px; }
+@media(max-width:860px) { .tl-editor { grid-template-columns:1fr; } .tl-preview video,.tl-preview img { max-height:300px; } .tl-project { flex-wrap:wrap; } }
+
+</style>
+</head>
+<body>
+<nav id="menu">
+  <h1><svg class="brand-mark" viewBox="0 0 48 48" fill="none" aria-hidden="true"><path d="M17 4H12a8 8 0 0 0-8 8v6m0 12v6a8 8 0 0 0 8 8h5m13 0h6a8 8 0 0 0 8-8v-6" stroke="#F8F9FA" stroke-width="4.5" stroke-linecap="round"/><path d="M30 4h6a8 8 0 0 1 8 8v6" stroke="#FFC629" stroke-width="4.5" stroke-linecap="round"/><path d="M15 39c1-6 2-7 5-9-4-2-6-6-5-11 0-7 7-11 13-9 3 1 5 1 8 0-1 6-6 9-13 8l-1 5-3-1c-3 0-2 5 1 5 2 7 5 8 10 7v5Z" fill="#F8F9FA"/><circle cx="29" cy="23" r="1.5" fill="#F8F9FA"/></svg><span class="brand-name">Studio <span>Avatar</span></span></h1><div class="menu-label">Espace de création</div>
+  <button data-p="nouvelle" class="actif"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v16M4 12h16"/></svg></span>Nouvelle vidéo</button>
+  <button data-p="projets"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="7" height="14" rx="2"/><rect x="14" y="5" width="7" height="9" rx="2"/></svg></span>Mes projets</button>
+  <button data-p="videos"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="m10 9 5 3-5 3Z"/></svg></span>Mes vidéos <span class="compte" id="n-cours" hidden></span></button>
+  <button data-p="avatars"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M5 21v-2a7 7 0 0 1 14 0v2Z"/></svg></span>Mes avatars</button>
+  <div class="bas">
+    <button data-p="avance"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2" fill="#0d131a"/><circle cx="16" cy="12" r="2" fill="#0d131a"/><circle cx="8" cy="18" r="2" fill="#0d131a"/></svg></span>Mode avancé</button>
+    <div class="etatsys" id="sys-vs">Voix : …</div>
+    <div class="etatsys" id="sys-t7">Modèles LTX : …</div>
+  </div>
+  <div class="local-note"><i></i> Votre studio, sur votre Mac.</div>
+</nav>
+
+<main id="contenu">
+<div class="topbar"><span>Votre espace <span style="margin:0 12px;color:#475569">/</span> <strong id="page-label">Nouvelle vidéo</strong></span><span class="tag">CRÉATION EN LOCAL</span></div>
+<!-- ================= NOUVELLE VIDÉO ================= -->
+<div class="page actif" id="p-nouvelle">
+  <header class="hero"><div class="eyebrow">De l’idée à la vidéo</div><h2>Donnez un visage<br><span>à vos idées.</span></h2><p class="intro">Un avatar, votre voix, votre histoire. Créez une vidéo qui vous ressemble, en trois étapes.</p><div class="hero-foot"><span>Exécution locale</span><span>Avatars personnalisés</span><span>Sans abonnement</span></div></header>
+  <div class="etapes"><div id="e1"><b>1</b>Avatar</div><div id="e2"><b>2</b>Ce qu'il dit</div><div id="e3"><b>3</b>Créer le projet</div></div>
+
+  <div class="etape actif" id="etape-1">
+    <p class="question">Choisissez votre avatar</p><p class="section-intro">Sélectionnez un visage dans votre bibliothèque ou importez une photo.</p>
+    <div class="grille" id="choix-avatar"></div>
+    <div class="navig"><span class="mut" id="msg-1"></span><button id="suiv-1" onclick="aller(2)" disabled>Suivant</button></div>
+  </div>
+
+  <div class="etape" id="etape-2">
+    <p class="question">Que doit-il dire ?</p>
+    <div class="choix2">
+      <div class="choix" id="ch-texte" onclick="source('texte')"><div class="t">✍️ J'écris le texte</div><div class="mut">La voix est créée sur ce Mac par VoiceStudio.</div></div>
+      <div class="choix" id="ch-audio" onclick="source('audio')"><div class="t">🎙 J'ai déjà l'audio</div><div class="mut">Un fichier wav ou mp3 (voix off, ElevenLabs…).</div></div>
+    </div>
+    <div id="bloc-audio" hidden>
+      <label>Fichier audio</label>
+      <div class="ligne"><select id="audio"></select><button class="sec" style="flex:0 0 auto" onclick="choisirFichier('audio')">Importer un fichier…</button></div>
+      <audio id="ecoute" controls style="width:100%;margin-top:12px" hidden></audio>
+    </div>
+    <div id="bloc-texte" hidden>
+      <label id="texte-label">Texte à dire</label>
+      <div class="mut" style="font-size:13px;margin-bottom:8px">Chaque TAG ouvre un bloc : toutes les phrases qui suivent partagent le même mini-clip jusqu’au prochain TAG.</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px" id="tons-barre"></div>
+      <textarea id="texte" placeholder="Bonjour ! [curious] Et si une IA pouvait recréer Photoshop ? [excited] C'est exactement ce que promet ArtCraft !"></textarea>
+      <div class="mut" id="texte-info" style="font-size:13px;margin-top:6px"></div>
+      <div id="storyboard"></div>
+      <div class="ligne" id="bloc-voix">
+        <div><label>Voix</label><select id="voix"></select></div>
+        <div style="max-width:200px"><label>Langue</label><select id="langue"><option value="fr">Français</option><option value="en">Anglais</option><option value="es">Espagnol</option><option value="de">Allemand</option><option value="it">Italien</option></select></div>
+      </div>
+    </div>
+    <div id="msg-2"></div>
+    <div class="navig"><button class="sec" onclick="aller(1)">Retour</button><button id="suiv-2" onclick="aller(3)" disabled>Suivant</button></div>
+  </div>
+
+  <div class="etape" id="etape-3">
+    <p class="question">Tout est bon ?</p>
+    <div class="info">Un TAG = un bloc, même s’il contient plusieurs phrases. Créez le projet, puis générez et ajustez ses clips dans la timeline. Les transitions LTX relient directement les poses des clips voisins.</div>
+    <div class="encadre recap" id="recap"></div>
+    <label>Nom du projet</label>
+    <input id="nom" placeholder="ma-video">
+    <div class="navig"><button class="sec" onclick="aller(2)">Retour</button><button class="gros" onclick="generer()">Créer le projet</button></div>
+  </div>
+</div>
+
+<div class="page" id="p-projets"><h2>Mes projets</h2><p class="intro">Une timeline par projet. Chaque TAG possède son mini-clip ; chaque liaison se génère entre deux clips.</p><div id="liste-projets"></div><div id="timeline-projet"></div></div>
+<!-- ================= MES VIDÉOS ================= -->
+<div class="page" id="p-videos">
+  <h2>Mes vidéos</h2>
+  <p class="intro">Les vidéos en préparation apparaissent ici, puis prêtes à regarder et télécharger.</p>
+  <div id="liste-videos"></div>
+</div>
+
+<!-- ================= MES AVATARS ================= -->
+<div class="page" id="p-avatars">
+  <h2>Mes avatars</h2>
+  <p class="intro">Ajoute une photo (assise, de face, bouche fermée, mains visibles) : le Mac lui prépare tout seul un geste par situation (neutre, curieux, enthousiaste, réfléchi, sérieux, chaleureux), leurs transitions et un clip de repos, une fois pour toutes (≈ 1 h 20). Ensuite, chaque vidéo de cet avatar est rapide.</p>
+  <div class="grille" id="grille-avatars"></div>
+  <div id="fiche-avatar"></div>
+</div>
+
+<!-- ================= MODE AVANCÉ ================= -->
+<div class="page avance" id="p-avance">
+  <h2>Mode avancé</h2>
+  <p class="intro">Chaque étape à la main. Inutile pour créer une vidéo normale.</p>
+  <section>
+    <h3>Générer un mouvement précis (LTX)</h3>
+    <div class="ligne">
+      <div><label>Avatar</label><select id="c-source"></select></div>
+      <div style="max-width:130px"><label>Durée</label><select id="c-images"><option value="33">1,4 s</option><option value="65">2,7 s</option><option value="97" selected>4 s</option><option value="121">5 s</option></select></div>
+      <div style="max-width:110px"><label>Seed</label><input id="c-seed" type="number" value="21"></div>
+    </div>
+    <label>Geste (en anglais)</label>
+    <textarea id="c-geste" style="min-height:70px" placeholder="She nods gently twice with a slight tilt of her head…"></textarea>
+    <label>Nom</label><input id="c-nom" placeholder="avatar-hochement-2">
+    <details><summary>Consigne de base (bouche fermée, gestes doux)</summary><textarea id="c-base" style="min-height:110px"></textarea></details>
+    <p><button onclick="clip()">Générer le mouvement</button> <span class="mut">≈ 7 min pour 4 s · sa transition se crée ensuite depuis la fiche de l'avatar</span></p>
+  </section>
+  <section>
+    <h3>Lipsync d'une vidéo existante (MuseTalk 1.5)</h3>
+    <div class="ligne"><div><label>Vidéo bouche fermée</label><select id="l-video"></select></div><div><label>Audio</label><select id="l-audio"></select></div></div>
+    <div class="ligne"><div><label>Nom</label><input id="l-nom" placeholder="lipsync"></div><div style="max-width:220px"><label>Décalage du cadre</label><input id="l-shift" type="number" value="0"></div></div>
+    <p><button onclick="lipsync()">Lancer le lipsync</button> <span class="mut">Résultat dans le dossier lipsync/</span></p>
+  </section>
+  <section>
+    <h3>Toutes les tâches</h3>
+    <div id="taches"></div>
+  </section>
+</div>
+</main>
+
+<input type="file" id="fichier" hidden>
+<script>
+let E = { fichiers: {}, taches: [] }, VOIX = { ok: false, voix: [] };
+let CH = { avatar: null, source: null, mode: 'sur-mesure' };
+let FICHE = null, ouverts = new Set(), baseRemplie = false, typeFichier = null, ETAPE = 1;
+const MASQUES = new Set((() => { try { return JSON.parse(localStorage.getItem('masques') || '[]'); } catch (e) { return []; } })());
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const js = s => esc(String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'"));
+const f = (d, n) => `/f/${d}/${encodeURIComponent(n)}`;
+const tige = n => String(n).replace(/\.[^.]+$/, '');
+const minsec = s => s >= 60 ? `${Math.floor(s / 60)} min ${String(Math.round(s % 60)).padStart(2, '0')} s` : `${Math.max(1, Math.round(s))} s`;
+async function api(url, corps) { const r = await fetch(url, { method: corps ? 'POST' : 'GET', headers: {'Content-Type': 'application/json'}, body: corps && JSON.stringify(corps) }); const data = await r.json(); if (!r.ok) throw new Error(data.erreur || 'Erreur du serveur'); return data; }
+
+// ---------------- navigation ----------------
+function page(p) {
+  $('page-label').textContent = {nouvelle:'Nouvelle vidéo',projets:'Mes projets',videos:'Mes vidéos',avatars:'Mes avatars',avance:'Mode avancé'}[p];
+  document.querySelectorAll('#menu button[data-p]').forEach(b => b.classList.toggle('actif', b.dataset.p === p));
+  document.querySelectorAll('.page').forEach(x => x.classList.toggle('actif', x.id === 'p-' + p));
+  dessiner(); window.scrollTo(0, 0);
+}
+document.querySelectorAll('#menu button[data-p]').forEach(b => b.onclick = () => page(b.dataset.p));
+function aller(n) {
+  if (n >= 2 && !CH.avatar) n = 1; if (n >= 3 && !pret2()) n = 2;
+  ETAPE = n;
+  for (let i = 1; i <= 3; i++) { $('etape-' + i).classList.toggle('actif', i === n); $('e' + i).className = i < n ? 'fait' : i === n ? 'ici' : ''; }
+  dessiner(); window.scrollTo(0, 0);
+}
+
+// ---------------- avatars ----------------
+function infos(src) {
+  const st = tige(src), L = (E.libs || {})[src] || { tons: {}, repos: [], pret: false };
+  const file = E.taches.filter(t => ['en attente', 'en cours'].includes(t.etat) && ['clip', 'pont', 'variante'].includes(t.type) && JSON.stringify(t.params).includes(st));
+  return { L, pret: L.pret, enCours: file.length, restant: file.reduce((a, t) => a + (t.type === 'pont' ? 210 : t.type === 'variante' ? 630 : 420), 0),
+           nTons: Object.keys(L.tons).length };
+}
+function etiquette(i) {
+  if (i.enCours) return `<span class="etiq prep">${i.pret ? 'Prêt · ' : ''}Préparation : encore ${i.enCours} étape(s) ≈ ${minsec(i.restant)}</span>`;
+  return `<span class="etiq mvt">Prêt</span>${i.pret ? ` <span class="etiq photo">+ mode rapide</span>` : ''}`;
+}
+function carteAvatar(x, action, sel) {
+  return `<div class="carte cliq ${sel ? 'sel' : ''}" role="button" tabindex="0" aria-pressed="${!!sel}" aria-label="${esc(tige(x.nom))}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" onclick="${action}"><img class="photo" alt="${esc(tige(x.nom))}" src="${f('sources', x.nom)}"><span class="coche">✓</span>
+    <div class="corps"><div class="titre">${esc(tige(x.nom))}</div>${etiquette(infos(x.nom))}</div></div>`;
+}
+const depot = texte => `<div class="depot" role="button" tabindex="0" aria-label="Importer une photo pour un nouvel avatar" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" onclick="choisirFichier('photo')" ondragover="event.preventDefault();this.classList.add('survol')" ondragleave="this.classList.remove('survol')" ondrop="deposer(event)"><div><div class="plus">＋</div><div><b>${texte}</b></div><div style="font-size:12px;margin-top:6px">Clique ou dépose une photo<br>assise, de face, bouche fermée<br><i>utilisable tout de suite</i></div></div></div>`;
+function choisirFichier(type) { typeFichier = type; $('fichier').accept = type === 'photo' ? 'image/*' : 'audio/*'; $('fichier').click(); }
+$('fichier').onchange = e => { envoyer(e.target.files[0], typeFichier); e.target.value = ''; };
+function deposer(e) { e.preventDefault(); e.currentTarget.classList.remove('survol'); const fi = e.dataTransfer.files[0]; if (fi) envoyer(fi, fi.type.startsWith('audio') ? 'audio' : 'photo'); }
+async function envoyer(fi, type) {
+  if (!fi) return;
+  if (type === 'photo' && !fi.type.startsWith('image')) return alert("Ce fichier n'est pas une image.");
+  if (type === 'audio' && !fi.type.startsWith('audio')) return alert("Ce fichier n'est pas un audio.");
+  const r = await (await fetch(`/api/envoi?dossier=${type === 'audio' ? 'audios' : 'sources'}&nom=${encodeURIComponent(fi.name)}`, { method: 'PUT', body: fi })).json();
+  await rafraichir(true);
+  if (type === 'photo') { CH.avatar = r.nom; FICHE = r.nom; } else { $('audio').value = r.nom; majAudio(); }
+  dessiner();
+}
+
+// ---------------- étape 2 ----------------
+function source(s) {
+  if (s === 'texte' && !VOIX.ok) return;
+  CH.source = s; $('bloc-texte').hidden = !s; $('bloc-audio').hidden = s !== 'audio'; $('bloc-voix').hidden = s !== 'texte';
+  $('texte-label').textContent = s === 'audio' ? "Texte de l'audio (facultatif : sert à placer les tons)" : 'Texte à dire';
+  $('ch-texte').classList.toggle('sel', s === 'texte'); $('ch-audio').classList.toggle('sel', s === 'audio'); majEtape2();
+}
+function dureeAudio(n) { return ((E.fichiers.audios || []).find(a => a.nom === n) || {}).duree || 0; }
+function sansBalises(t) { return t.replace(/\[[^\]]+\]/g, ' ').replace(/\s+/g, ' ').trim(); }
+function dureeParole() { return CH.source === 'texte' ? sansBalises($('texte').value).length / 14 : dureeAudio($('audio').value); }
+function segmentsTexte(texte) {
+  const out = []; let ton = 'neutre', texteBloc = '';
+  for (const m of (texte || '').split(/(\[[^\]]+\])/)) {
+    const tag = m.trim().match(/^\[([^\]]+)\]$/);
+    const suivant = tag && (E.balises || {})[tag[1].trim().toLowerCase()];
+    if (suivant) {
+      if (texteBloc.trim()) out.push({ton, texte:texteBloc.replace(/\s+/g,' ').trim()});
+      ton = suivant; texteBloc = '';
+    } else if (!tag) texteBloc += m;
+  }
+  if (texteBloc.trim()) out.push({ton,texte:texteBloc.replace(/\s+/g,' ').trim()});
+  return out;
+}
+
+function ton(k) { return (E.tons || []).find(t => t.cle === k) || { cle: k, nom: k, emoji: '' }; }
+function insererTon(b) {
+  const ta = $('texte'), a = ta.selectionStart, z = ta.selectionEnd, avant = ta.value.slice(0, a);
+  const ins = (avant && !/\s$/.test(avant) ? ' ' : '') + `[${b}] `;
+  ta.value = avant + ins + ta.value.slice(z); ta.focus(); ta.selectionStart = ta.selectionEnd = a + ins.length; majEtape2();
+}
+function storyboardHTML(compact) {
+  const segs = segmentsTexte($('texte').value); if (!segs.length) return '';
+  const L = CH.avatar ? infos(CH.avatar).L : { tons: {} };
+  const total = dureeParole(), nCar = segs.reduce((a, x) => a + x.texte.length, 0) || 1;
+  return `<div class="storyboard">${segs.map((x, k) => {
+    const d = CH.source === 'audio' ? total * x.texte.length / nCar : x.texte.length / 14, T = ton(x.ton);
+    const avert = '';
+    return `<div class="sb"><div class="ton">${T.emoji} ${esc(T.nom)}</div><div>${esc(compact && x.texte.length > 120 ? x.texte.slice(0, 120) + '…' : x.texte)}${avert ? `<div class="avert">${avert}</div>` : ''}</div><div class="mut">${d ? '≈ ' + minsec(d) : ''}</div></div>`;
+  }).join('')}</div>`;
+}
+function pret2() { return CH.source === 'texte' ? !!(sansBalises($('texte').value) && VOIX.ok && $('voix').value) : CH.source === 'audio' && !!$('audio').value; }
+function majAudio() { const a = $('audio').value; $('ecoute').hidden = !a; if (a && $('ecoute').dataset.nom !== a) { $('ecoute').src = f('audios', a); $('ecoute').dataset.nom = a; } majEtape2(); }
+function majEtape2() {
+  const n = sansBalises($('texte').value).length, nb = segmentsTexte($('texte').value).length;
+  $('texte-info').textContent = n ? `${n} caractères · ${nb} bloc(s) TAG · environ ${minsec(CH.source === 'audio' ? dureeParole() : n / 14)} de parole` : '';
+  $('storyboard').innerHTML = storyboardHTML(false);
+  $('suiv-2').disabled = !pret2();
+  $('msg-2').innerHTML = !VOIX.ok ? `<div class="info">VoiceStudio n'est pas lancé : « J'écris le texte » est indisponible. Lance VoiceStudio, ou utilise un audio.</div>`
+    : !CH.source ? '<div class="mut" style="margin-top:14px">Choisis une des deux options.</div>' : '';
+}
+$('texte').oninput = majEtape2; $('audio').onchange = majAudio; $('voix').onchange = majEtape2;
+
+// ---------------- étape 3 ----------------
+function choisirMode(m) { if (m === 'rapide' && !infos(CH.avatar).pret) return; CH.mode = m; recap(); }
+function estimation() {
+  const d = dureeParole(), voix = CH.source === 'texte' ? d * 2 + 20 : 0, lipsync = d * 10 + 140;
+  const gestes = CH.mode === 'sur-mesure' ? d * 170 + 60 : 20;   // mesuré le 20/10 : 13,7 s -> 47 min au total (blocs geste + liaison)
+  return { d, attente: 0, calcul: voix + gestes + lipsync };
+}
+function recap() {
+  if (!CH.avatar) return;
+  const { d, calcul, attente } = estimation(), txt = $('texte').value.trim();
+  const quoi = (CH.source === 'audio' ? `Audio : ${esc(tige($('audio').value))}` : '') + (txt ? storyboardHTML(true) : CH.source === 'audio' ? '<div class="mut">Sans texte : gestes neutres tout du long.</div>' : '');
+  const voix = CH.source === 'texte' ? (($('voix').selectedOptions[0] || {}).textContent || '') : "celle de l'audio";
+  $('recap').innerHTML = `<img src="${f('sources', CH.avatar)}"><dl>
+    <dt>Avatar</dt><dd>${esc(tige(CH.avatar))}</dd>
+    <dt>Animation</dt><dd>Un mini-clip par TAG, transitions entre les poses voisines · lèvres synchronisées</dd>
+    <dt>Ce qu'il dit</dt><dd>${quoi}</dd>
+    <dt>Voix</dt><dd>${esc(voix)}</dd>
+    <dt>Durée</dt><dd>environ ${minsec(d)}</dd>
+    <dt>Estimation initiale</dt><dd>environ ${minsec(calcul)} <span class="mut">(sur ce Mac, gratuit)</span>${attente ? `<br><span style="color:var(--acc)">+ ≈ ${minsec(attente)} : la préparation de l'avatar se termine d'abord.</span>` : ''}</dd></dl>`;
+  if (!$('nom').value) $('nom').value = tige(CH.avatar) + '-' + new Date().toISOString().slice(5, 16).replace(/\D/g, '');
+}
+async function generer() {
+  const p = { avatar: CH.avatar, mode: CH.mode, nom: $('nom').value.trim() || 'video', estimation: Math.round(estimation().calcul) };   // calcul propre à la vidéo (hors attente)
+  if (CH.source === 'texte') Object.assign(p, { texte: $('texte').value.trim(), voix: $('voix').value, langue: $('langue').value });
+  else Object.assign(p, { audio: $('audio').value, texte: $('texte').value.trim() });
+  let projet;
+  try { projet = await api('/api/projets', p); } catch(e) { alert(e.message); return; }
+  PROJET = projet.id; ELEMENT = projet.blocs[0].id;
+  $('texte').value = ''; $('nom').value = ''; CH.source = null;
+  $('bloc-texte').hidden = $('bloc-audio').hidden = true; $('ch-texte').classList.remove('sel'); $('ch-audio').classList.remove('sel');
+  await rafraichir(true); aller(1); page('projets');
+}
+
+// ---------------- mes vidéos ----------------
+function listeVideos() {
+  const pretes = E.fichiers.videos || [];
+  const enCours = E.taches.filter(t => t.type === 'video' && (['en attente', 'en cours'].includes(t.etat) || (t.etat === 'erreur' && !pretes.some(v => tige(v.nom) === t.params.nom))));
+  const lignes = enCours.map(t => {
+    const p = t.params, ecoule = t.debut ? Date.now() / 1000 - t.debut : 0, est = p.estimation || 300;
+    const devant = E.taches.filter(x => ['en attente', 'en cours'].includes(x.etat) && x.cree < t.cree).length;
+    const corps = t.etat === 'erreur' ? `<div class="alerte">Échec : ${esc(t.erreur)}</div>`
+      : t.etat === 'en attente' ? `<div class="mut">En attente : elle passe dès que la tâche en cours se termine.</div>`
+      : `<div class="barre"><div style="width:${Math.min(95, Math.round(100 * ecoule / est))}%"></div></div><div class="mut">${esc(t.etape || 'En préparation')}… · ${minsec(ecoule)} sur environ ${minsec(est)}</div>`;
+    const btn = t.etat === 'erreur' ? `<button class="petit" onclick="reessayer('${t.id}')">Réessayer</button><button class="sec petit" onclick="masquer('${t.id}')">Retirer</button>`
+      : `<button class="sec petit" onclick="annuler('${t.id}')">Annuler</button>`;
+    return `<div class="ligne-video"><img src="${f('sources', p.avatar)}"><div><div style="font-weight:600;font-size:16px">${esc(p.nom)}</div>${corps}</div><div style="display:flex;flex-direction:column;gap:8px">${btn}</div></div>`;
+  });
+  const faites = pretes.map(v => `<div class="ligne-video"><video src="${f('videos', v.nom)}#t=0.1" controls preload="metadata" playsinline></video><div>
+      <div style="font-weight:600;font-size:16px">${esc(v.meta.nom || tige(v.nom))}</div>
+      <div class="mut">${v.duree ? minsec(v.duree) : ''}${v.meta.avatar ? ' · ' + esc(tige(v.meta.avatar)) : ''}</div>
+      ${v.meta.texte ? `<div class="mut" style="margin-top:6px">« ${esc(v.meta.texte.slice(0, 160))}${v.meta.texte.length > 160 ? '…' : ''} »</div>` : ''}</div>
+      <div style="display:flex;flex-direction:column;gap:8px"><a href="${f('videos', v.nom)}" download><button class="petit" style="width:100%">Télécharger</button></a><button class="sec petit" onclick="supprimer('videos','${js(v.nom)}')">Supprimer</button></div></div>`);
+  $('liste-videos').innerHTML = [...lignes, ...faites].join('') || `<div class="vide">Aucune vidéo pour l'instant.<br><br><button onclick="page('nouvelle')">Créer ma première vidéo</button></div>`;
+}
+function masquer(id) { MASQUES.add(id); try { localStorage.setItem('masques', JSON.stringify([...MASQUES])); } catch (e) {} rafraichir(true); }
+async function reessayer(id) { const t = E.taches.find(x => x.id === id); masquer(id); await api('/api/tache', { type: 'video', params: t.params }); rafraichir(true); }
+
+// ---------------- mes avatars ----------------
+function ficheAvatar() {
+  if (!FICHE || !(E.fichiers.sources || []).some(s => s.nom === FICHE)) return '';
+  const i = infos(FICHE), ponts = new Set((E.fichiers.ponts || []).map(p => p.nom));
+  const dansLib = new Set([...Object.values(i.L.tons).flat(), ...i.L.repos]);
+  const autres = (E.fichiers.clips || []).filter(c => (c.meta || {}).source === FICHE && !dansLib.has(c.nom));
+  const bloc = i.enCours ? `<div class="info">Préparation en cours : encore ${i.enCours} étape(s), ≈ ${minsec(i.restant)}. Une vidéo lancée maintenant démarrera juste après.</div>`
+    : (!i.pret || i.nTons < (E.tons || []).length || !i.L.repos.length) ? `<div class="info">Cet avatar est utilisable tout de suite en mode <b>sur mesure</b>. Pour le mode <b>rapide</b>, il lui faut une bibliothèque de gestes (une fois pour toutes, ≈ 1 h 20).<br><br><button class="sec" onclick="creerMouvements('${js(FICHE)}')">${i.pret ? 'Compléter la bibliothèque' : 'Préparer le mode rapide'}</button></div>` : '';
+  const carte = (c, trans) => `<div class="carte"><video src="${f('clips', c)}#t=0.1" controls loop preload="metadata" playsinline></video>
+      <div class="corps"><div class="titre">${esc(tige(c).replace(tige(FICHE) + '-', ''))}</div>
+      ${trans ? `<div class="mut">${ponts.has('pont-' + c) ? 'avec transition' : '<span style="color:var(--err)">sans transition</span>'}</div>` : ''}
+      <p style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 0">${trans ? `<button class="sec petit" onclick="pont('${js(c)}')">${ponts.has('pont-' + c) ? 'Refaire la transition' : 'Créer la transition'}</button>` : ''}<button class="sec petit" onclick="supprimer('clips','${js(c)}')">Supprimer</button></p></div></div>`;
+  const situ = (E.tons || []).map(T => `<div class="situ"><h4>${T.emoji} ${esc(T.nom)} <span class="mut" style="font-weight:400;font-size:13px">· balise [${esc(T.balise)}]</span></h4>
+      <div class="grille">${(i.L.tons[T.cle] || []).map(c => carte(c, true)).join('')}
+      <div class="depot" style="aspect-ratio:auto;min-height:120px" onclick="variante('${T.cle}')"><div><div class="plus">＋</div>Ajouter une variante<br><span style="font-size:12px">≈ 10 min</span></div></div></div></div>`).join('');
+  return `<div class="encadre" style="margin-top:24px"><div class="recap"><img src="${f('sources', FICHE)}"><div>
+    <h3 style="margin:0 0 4px;font-size:20px">${esc(tige(FICHE))}</h3>${etiquette(i)}${bloc}
+    <p style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px"><button onclick="CH.avatar='${js(FICHE)}';page('nouvelle');aller(2)">Créer une vidéo avec cet avatar</button><button class="sec" onclick="supprimerAvatar('${js(FICHE)}')">Supprimer l'avatar</button></p></div></div>
+    <h3 style="margin:26px 0 0">Bibliothèque du mode rapide</h3><div class="mut" style="font-size:13px">Un geste par ton de voix, chacun suivi de sa transition de retour à la pose. Inutile en mode sur mesure.</div>${situ}
+    <div class="situ"><h4>🫧 Repos <span class="mut" style="font-weight:400;font-size:13px">· comble les silences et les fins de phrase</span></h4><div class="grille">${i.L.repos.map(c => carte(c, false)).join('')}
+      <div class="depot" style="aspect-ratio:auto;min-height:120px" onclick="variante('repos')"><div><div class="plus">＋</div>Ajouter un repos<br><span style="font-size:12px">≈ 7 min</span></div></div></div></div>
+    ${autres.length ? `<div class="situ"><h4>Autres mouvements <span class="mut" style="font-weight:400;font-size:13px">· non utilisés tant qu'ils n'ont pas de transition ou de situation</span></h4><div class="grille">${autres.map(c => carte(c.nom, true)).join('')}</div></div>` : ''}</div>`;
+}
+function variante(t) { api('/api/tache', { type: 'variante', params: { avatar: FICHE, ton: t } }).then(() => rafraichir(true)); }
+function creerMouvements(src) { api('/api/tache', { type: 'avatar', params: { source: src } }).then(() => rafraichir(true)); }
+async function supprimerAvatar(src) { if (confirm(`Supprimer l'avatar ${tige(src)}, avec sa photo et ses mouvements ?`)) { await api('/api/supprimer_avatar', { nom: src }); FICHE = null; if (CH.avatar === src) CH.avatar = null; rafraichir(true); } }
+function pont(c) {
+  const long = confirm(`Transition pour ${tige(c)}\n\nOK : longue (2,7 s), si le geste finit loin de la pose de départ (mains levées…).\nAnnuler : courte (1,4 s).`);
+  api('/api/tache', { type: 'pont', params: { clip: c, images: long ? 65 : 33, extra: long ? 'She slowly and gently brings her hands back to their starting position.' : '' } }).then(() => rafraichir(true));
+}
+async function supprimer(d, n) { if (confirm(`Supprimer ${tige(n)} ?`)) { await api('/api/supprimer', { dossier: d, nom: n }); rafraichir(true); } }
+async function annuler(id) { if (confirm('Annuler cette tâche ?')) { await api('/api/annuler', { id }); rafraichir(true); } }
+
+// ---------------- mode avancé ----------------
+function clip() {
+  if (!$('c-source').value || !$('c-geste').value.trim()) return alert('Choisis un avatar et décris le geste.');
+  api('/api/tache', { type: 'clip', params: { source: $('c-source').value, geste: $('c-geste').value.trim(), images: +$('c-images').value, seed: +$('c-seed').value,
+    nom: $('c-nom').value || tige($('c-source').value) + '-geste-' + $('c-seed').value, base: $('c-base').value.trim() } }).then(() => rafraichir(true));
+  $('c-seed').value = +$('c-seed').value + 1;
+}
+function lipsync() {
+  if (!$('l-video').value || !$('l-audio').value) return alert('Choisis une vidéo et un audio.');
+  api('/api/tache', { type: 'lipsync', params: { video: $('l-video').value, audio: $('l-audio').value, bbox_shift: +$('l-shift').value, nom: $('l-nom').value || 'lipsync-' + Date.now() } }).then(() => rafraichir(true));
+}
+const LIB = { clip: 'mouvement', pont: 'transition', sequence: 'séquence', lipsync: 'lipsync', video: 'vidéo', avatar: 'avatar' };
+function dessinerTaches() {
+  $('taches').innerHTML = E.taches.map(t => {
+    const dur = t.debut ? Math.round((t.fin || Date.now() / 1000) - t.debut) : null;
+    return `<div style="border-bottom:1px solid var(--bord);padding:8px 0;font-size:13px"><b style="color:${t.etat === 'finie' ? 'var(--ok)' : t.etat === 'erreur' ? 'var(--err)' : t.etat === 'en cours' ? 'var(--acc)' : 'var(--mut)'}">${esc(t.etat)}</b>
+      · ${LIB[t.type] || t.type} ${esc(tige(t.params.nom || t.params.clip || t.params.source || ''))} ${dur != null ? `<span class="mut">· ${minsec(dur)}</span>` : ''}
+      ${['en attente', 'en cours'].includes(t.etat) ? `<button class="sec petit" onclick="annuler('${t.id}')">Annuler</button>` : ''}
+      <button class="sec petit" onclick="journal('${t.id}')">Journal</button>${t.erreur ? `<div style="color:var(--err)">${esc(t.erreur)}</div>` : ''}
+      ${ouverts.has(t.id) ? `<pre id="j-${t.id}">…</pre>` : ''}</div>`;
+  }).join('') || '<span class="mut">Aucune tâche</span>';
+  ouverts.forEach(async id => { const j = await api('/api/journal/' + id), el = $('j-' + id); if (el) { el.textContent = j.texte || '(vide)'; el.scrollTop = el.scrollHeight; } });
+}
+function journal(id) { ouverts.has(id) ? ouverts.delete(id) : ouverts.add(id); dessinerTaches(); }
+
+// ---------------- affichage ----------------
+function options(sel, liste, vide) {
+  const v = sel.value;
+  sel.innerHTML = (vide != null ? `<option value="">${vide}</option>` : '') + liste.map(([val, txt]) => `<option value="${esc(val)}">${esc(txt)}</option>`).join('');
+  if ([...sel.options].some(o => o.value === v)) sel.value = v;
+}
+function dessiner() {
+  const S = E.fichiers.sources || [];
+  if (CH.avatar && !S.some(s => s.nom === CH.avatar)) CH.avatar = null;
+  $('sys-vs').innerHTML = `Voix VoiceStudio : <b class="${VOIX.ok ? 'ok' : 'err'}">${VOIX.ok ? 'prête' : 'non lancée'}</b>`;
+  $('sys-t7').innerHTML = `Modèles LTX : <b class="${E.t7 ? 'ok' : 'err'}">${E.t7 ? 'disponibles' : 'absents'}</b>`;
+  const actives = E.taches.filter(t => t.type === 'video' && ['en attente', 'en cours'].includes(t.etat)).length;
+  $('n-cours').hidden = !actives; $('n-cours').textContent = actives;
+  $('choix-avatar').innerHTML = S.map(x => carteAvatar(x, `CH.avatar='${js(x.nom)}';dessiner()`, CH.avatar === x.nom)).join('') + depot('Nouvel avatar');
+  const iCh = CH.avatar ? infos(CH.avatar) : null;
+  $('suiv-1').disabled = !CH.avatar;
+  $('msg-1').textContent = !CH.avatar ? 'Clique sur un avatar, ou ajoute une photo.' : `Avatar choisi : ${tige(CH.avatar)}`;
+  if (!$('tons-barre').children.length && E.tons) $('tons-barre').innerHTML = E.tons.map(T => `<button class="tonbtn" onclick="insererTon('${T.balise}')" title="insère [${T.balise}]">${T.emoji} ${esc(T.nom)}</button>`).join('');
+  options($('voix'), VOIX.voix.map(v => [v.id, v.nom]));
+  options($('audio'), (E.fichiers.audios || []).map(a => [a.nom, `${tige(a.nom)} (${a.duree != null ? minsec(a.duree) : '?'})`]), 'Choisir un audio…');
+  $('ch-texte').classList.toggle('off', !VOIX.ok);
+  if (CH.source === 'texte' && !VOIX.ok) source('audio');
+  majEtape2();
+  if (ETAPE === 3) recap();
+  if ($('p-videos').classList.contains('actif')) listeVideos();
+  $('grille-avatars').innerHTML = S.map(x => carteAvatar(x, `FICHE='${js(x.nom)}';dessiner()`, FICHE === x.nom)).join('') + depot('Nouvel avatar');
+  $('fiche-avatar').innerHTML = ficheAvatar();
+  if (!baseRemplie && E.base_clip) { $('c-base').value = E.base_clip; baseRemplie = true; }
+  options($('c-source'), S.map(x => [x.nom, tige(x.nom)]));
+  options($('l-audio'), (E.fichiers.audios || []).map(a => [a.nom, tige(a.nom)]));
+  options($('l-video'), [...(E.fichiers.sequences || []).map(x => ['sequences/' + x.nom, 'Séquence · ' + tige(x.nom)]), ...(E.fichiers.clips || []).map(x => ['clips/' + x.nom, 'Mouvement · ' + tige(x.nom)])]);
+  dessinerTaches();
+  if ($('p-projets').classList.contains('actif')) dessinerProjets();
+}
+let PROJETS = [], PROJET = null, ELEMENT = null, TL_EMPREINTE = '';
+let empreinte = '', tour = 0;
+async function rafraichir(forcer) {
+  [E, PROJETS] = await Promise.all([api('/api/etat'), api('/api/projets')]); E.taches = E.taches.filter(t => !MASQUES.has(t.id));
+  if (forcer || tour++ % 5 === 0) VOIX = await api('/api/voix');
+  const e = JSON.stringify([E.fichiers, E.taches.map(t => [t.id, t.etat]), E.t7, VOIX.ok, VOIX.voix.length, PROJETS]);
+  if (forcer || e !== empreinte) { empreinte = e; dessiner(); }
+  else { if ($('p-videos').classList.contains('actif') && E.taches.some(t => t.etat === 'en cours' && t.type === 'video')) listeVideos(); dessinerTaches(); }
+}
+let TL_DIRTY = false;
+function ouvrirProjet(id) { PROJET=id; ELEMENT=null; TL_DIRTY=false; TL_EMPREINTE=''; dessinerProjets(); }
+function choisirElement(id) {
+  if (TL_DIRTY && !confirm('Quitter ce bloc sans enregistrer les modifications ?')) return;
+  ELEMENT=id; TL_DIRTY=false; TL_EMPREINTE=''; dessinerProjets();
+}
+function clipCourant(b) { return !!b.clip && b.rendu_revision === b.revision; }
+function pontCourant(p,b) {
+  const a=p.blocs.find(x=>x.id===b.gauche), z=p.blocs.find(x=>x.id===b.droite);
+  return clipCourant(a) && clipCourant(z) && clipCourant(b) && JSON.stringify(b.extremites)===JSON.stringify([a.clip,z.clip]);
+}
+function tacheElement(p,b) { return E.taches.find(t=>t.params.projet===p.id && t.params.element===(b?.id || null)); }
+function travailProjet(p) { return E.taches.some(t=>t.params.projet===p.id && ['en attente','en cours'].includes(t.etat)); }
+function statutElement(p,b,transition) {
+  const t=tacheElement(p,b);
+  if(t && ['en attente','en cours'].includes(t.etat)) return t.etape || t.etat;
+  if(t && ['erreur','annulée'].includes(t.etat)) return t.etat==='erreur' ? 'Échec · relançable' : 'Annulé · relançable';
+  return (transition ? pontCourant(p,b) : clipCourant(b)) ? 'Prêt' : b.clip ? 'À refaire' : 'À générer';
+}
+function dessinerProjets() {
+  $('liste-projets').innerHTML=PROJET ? '<button class="sec petit" onclick="PROJET=null;TL_DIRTY=false;dessinerProjets()">← Tous les projets</button>' : PROJETS.map(p=>`<div class="tl-project"><div><h3>${esc(p.nom)}</h3><p>${p.blocs.length} blocs TAG · ${p.transitions.length} transitions · ${esc(tige(p.avatar))}</p></div><button onclick="ouvrirProjet('${p.id}')">Ouvrir la timeline →</button></div>`).join('') || '<div class="vide">Aucun projet pour le moment.<br><br><button onclick="page(\'nouvelle\')">Créer un projet</button></div>';
+  const p=PROJETS.find(p=>p.id===PROJET);
+  if(!p) { $('timeline-projet').innerHTML=''; return; }
+  const signature=JSON.stringify([p,E.taches.filter(t=>t.params.projet===p.id).map(t=>[t.id,t.etat,t.etape]),ELEMENT]);
+  if(TL_DIRTY || signature===TL_EMPREINTE) return;
+  if(!p.blocs.some(b=>b.id===ELEMENT) && !p.transitions.some(b=>b.id===ELEMENT)) ELEMENT=p.blocs[0].id;
+  TL_EMPREINTE=signature;
+  const activeJob=E.taches.find(t=>t.params.projet===p.id && ['en attente','en cours'].includes(t.etat));
+  const busy=travailProjet(p), x=[...p.blocs,...p.transitions].find(b=>b.id===ELEMENT), transition=!!x.gauche;
+  const t=tacheElement(p,x), toutPret=p.blocs.every(clipCourant)&&p.transitions.every(b=>pontCourant(p,b));
+  let cumul=0;
+  const item=(b,isPont,i)=>{
+    const debut=cumul; cumul+=b.duree;
+    const pret=isPont?pontCourant(p,b):clipCourant(b);
+    return `<button class="tl-item ${isPont?'transition':''} ${b.id===ELEMENT?'selected':''}" onclick="choisirElement('${b.id}')"><strong>${isPont?'↔ Transition':`${i+1}. ${esc(ton(b.ton).nom)}`}</strong>${b.clip?`<img src="${f(isPont?'ponts':'clips',b.clip.replace(/\.mp4$/,'.jpg'))}" alt="Aperçu ${isPont?'transition':'clip'}" onerror="this.style.display='none'">`:`<div class="tl-placeholder">${isPont?'↔':'▷'}</div>`}<small>${debut.toFixed(1)} – ${cumul.toFixed(1)} s</small><p>${isPont?'Pause entre les deux blocs':esc(b.texte || 'Texte à compléter')}</p><span class="tl-status ${pret?'ready':''}">${esc(statutElement(p,b,isPont))}</span></button>`;
+  };
+  const strip=p.blocs.map((b,i)=>item(b,false,i)+(p.transitions[i]?item(p.transitions[i],true,i):'')).join('');
+  const dernierExport=p.export ? `<div class="encadre"><strong>${p.export.revision===p.revision?'Dernier export':'Export précédent · la timeline a changé'}</strong><p><video controls playsinline preload="metadata" style="width:100%;max-height:350px" src="${f('videos',p.export.fichier)}"></video></p><a href="${f('videos',p.export.fichier)}" download>Télécharger la vidéo</a></div>`:'';
+  $('timeline-projet').innerHTML=`<div class="timeline-toolbar"><h3>${esc(p.nom)}</h3><button class="sec petit" ${busy||p.audio_source?'disabled':''} onclick="actionProjet('ajouter')">＋ Bloc TAG</button><button class="sec petit" ${busy?'disabled':''} onclick="lancerProjet('manquants')">Générer les éléments manquants</button><button class="petit" ${busy||!toutPret?'disabled':''} onclick="lancerProjet('export')">Assembler et synchroniser</button></div><p class="mut" style="font-size:12px">${cumul.toFixed(1)} s au total · Les transitions ajoutent une pause réglable à la voix. ${p.audio_source?'Audio importé : découpage initial estimé au prorata du texte.':''} ${busy?'Calcul en cours : les réglages seront modifiables à la fin.':''}</p>${activeJob?`<div class="info">${esc(activeJob.etape || activeJob.etat)} <button class="sec petit" onclick="annuler('${activeJob.id}')">Annuler cette tâche</button></div>`:''}<div class="timeline-strip">${strip}</div><div class="tl-editor"><div class="tl-preview">${x.clip?`<video controls playsinline preload="metadata" src="${f(transition?'ponts':'clips',x.clip)}"></video><p class="mut" style="font-size:12px">${(transition?pontCourant(p,x):clipCourant(x))?'Version actuelle':'Version précédente conservée en aperçu.'}</p>`:`<img src="${f('sources',p.avatar)}" alt="Photo de référence"><p class="mut">${transition?'Générez les deux clips voisins, puis leur liaison.':'Photo de référence · clip à générer'}</p>`}${!transition&&x.audio?`<audio controls style="width:100%" src="${f('audios',x.audio)}"></audio>`:''}</div><div class="tl-fields" oninput="TL_DIRTY=true;document.getElementById('tl-save-state').textContent='Modifications non enregistrées'">${transition?`<h3>Transition entre deux clips</h3><p class="mut">Dernière image retenue du clip précédent → première image du suivant. Aucun retour à la photo initiale.</p>`:`<label for="tl-ton">TAG / intention</label><select id="tl-ton" ${busy?'disabled':''}>${(E.tons||[]).map(t=>`<option value="${t.cle}" ${x.ton===t.cle?'selected':''}>${esc(t.nom)}</option>`).join('')}</select><label for="tl-text">Texte du bloc (plusieurs phrases possibles)</label><textarea id="tl-text" ${busy||p.audio_source?'disabled':''}>${esc(x.texte)}</textarea><label for="tl-prompt">Direction du jeu LTX (en anglais)</label><textarea id="tl-prompt" ${busy?'disabled':''}>${esc(x.prompt)}</textarea>`}<div class="ligne"><div><label for="tl-duration">${transition?'Durée de la pause':'Durée du clip'} (secondes)</label><input id="tl-duration" type="number" min="0.5" max="20" step="0.1" value="${x.duree.toFixed(3)}" ${busy?'disabled':''}></div><div><label for="tl-seed">Seed LTX</label><input id="tl-seed" type="number" value="${x.seed}" ${busy?'disabled':''}></div></div>${!transition?'<p class="mut" style="font-size:11px">La première génération mesure la voix et règle la durée. Ensuite, vous pouvez ajuster le clip : une durée plus courte coupe la parole à l’export.</p>':''}<div class="tl-actions"><button class="sec" ${busy?'disabled':''} onclick="enregistrerElement()">Enregistrer</button><button ${busy?'disabled':''} onclick="genererElement('${transition?'pont':'clip'}')">${x.clip?'Relancer uniquement ce '+(transition?'pont':'clip'):'Générer '+(transition?'la transition':'ce clip')}</button>${t&&['en attente','en cours'].includes(t.etat)?`<button class="sec" onclick="annuler('${t.id}')">Annuler</button>`:''}</div><p id="tl-save-state" class="mut" style="font-size:12px">${esc(statutElement(p,x,transition))}</p>${t?.erreur?`<div class="tl-error">${esc(t.erreur)}</div>`:''}${!transition?`<div class="tl-actions"><button class="sec petit" ${busy||p.blocs[0].id===x.id?'disabled':''} onclick="actionProjet('deplacer',{sens:-1})">← Déplacer</button><button class="sec petit" ${busy||p.blocs.at(-1).id===x.id?'disabled':''} onclick="actionProjet('deplacer',{sens:1})">Déplacer →</button><button class="sec petit" ${busy||p.blocs.length===1?'disabled':''} onclick="actionProjet('supprimer')">Retirer ce bloc</button></div>`:''}</div></div>${dernierExport}`;
+  if(!transition) $('tl-ton').onchange=()=>{ const cle=$('tl-ton').value; const prompts={neutre:'She nods gently, her hands resting calmly.',curieux:'She raises her eyebrows with an intrigued expression, looking straight into the camera.',enthousiaste:'She gives a small soft shrug and a gentle closed-mouth smile, briefly turning her palms up on her lap.',reflechi:'She looks thoughtful, briefly lowering her eyes, then looks back into the camera.',serieux:'She leans slightly forward with a serious attentive look, then gently sits back.',chaleureux:'She smiles warmly with her mouth closed and nods in acknowledgement.'}; $('tl-prompt').value=prompts[cle]; TL_DIRTY=true; $('tl-save-state').textContent='Modifications non enregistrées'; };
+}
+async function requeteProjet(url,data) {
+  try { const p=await api(url,{projet:PROJET,...data}); PROJETS=PROJETS.map(x=>x.id===p.id?p:x); TL_DIRTY=false; TL_EMPREINTE=''; await rafraichir(true); return true; }
+  catch(e) { alert(e.message); return false; }
+}
+async function enregistrerElement() {
+  const data={action:'modifier',element:ELEMENT,duree:Number($('tl-duration').value),seed:Number($('tl-seed').value)};
+  if($('tl-ton')) Object.assign(data,{ton:$('tl-ton').value,texte:$('tl-text').value,prompt:$('tl-prompt').value});
+  return requeteProjet('/api/projets/modifier',data);
+}
+async function genererElement(action) { if(await enregistrerElement()) await lancerProjet(action,ELEMENT); }
+async function lancerProjet(action,element) {
+  if(TL_DIRTY && !await enregistrerElement()) return;
+  await requeteProjet('/api/projets/lancer',{action,element});
+}
+async function actionProjet(action,extra={}) {
+  if(TL_DIRTY && !await enregistrerElement()) return;
+  await requeteProjet('/api/projets/modifier',{action,element:ELEMENT,...extra});
+}
+
+aller(1); rafraichir(true).catch(console.error); setInterval(() => rafraichir().catch(console.error), 3000);
+</script>
+</body>
+</html>
