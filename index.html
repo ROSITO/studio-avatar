@@ -187,6 +187,7 @@ pre { background:#080c11; }
 
 .modeles-groupe { margin:30px 0; } .modeles-cartes { display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px; } .modele-carte { background:var(--pan);border:1px solid var(--bord);border-radius:12px;padding:20px;min-width:0; } .modele-carte.selectionne { border-color:#ffc62965; } .modele-entete { display:flex;flex-wrap:wrap;gap:10px;align-items:center; } .modele-carte p { font-size:12px;line-height:1.7; } .modele-chemin { overflow-wrap:anywhere;font-size:12px; } .modele-carte a { color:var(--acc);font-size:11px;overflow-wrap:anywhere; } @media(max-width:540px) { .modeles-cartes {grid-template-columns:1fr;} }
 .suivi-calcul { border:1px solid #ffc62945;background:var(--pan);border-radius:12px;padding:18px 20px;margin:18px 0; } .suivi-entete { display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:13px; } .suivi-entete span { color:var(--acc); } .suivi-details,.suivi-activite { font-size:12px;color:var(--mut);margin-top:8px; } .suivi-activite { color:var(--ok); } .suivi-actions { display:flex;gap:8px;margin-top:12px; } .barre.indeterminee div { animation:calcul-actif 2s ease-in-out infinite; } @keyframes calcul-actif { 0% {transform:translateX(-110%);} 100% {transform:translateX(390%);} }
+.moniteur { border:1px solid var(--bord);border-radius:14px;background:var(--pan);padding:22px;margin:22px 0; } .moniteur-entete { display:flex;justify-content:space-between;align-items:center;gap:20px;margin-bottom:15px; } .moniteur h3 { margin:0; } .moniteur .eyebrow {margin-bottom:6px;} .moniteur-boucle { display:flex;gap:8px;align-items:center;margin:0;white-space:nowrap; } .moniteur-boucle input {width:auto;} .moniteur-ecran { background:#06090d;min-height:180px;display:grid;place-items:center;border-radius:8px;overflow:hidden; } .moniteur-ecran video {width:100%;height:350px;object-fit:contain;} #moniteur-vide {text-align:center;color:var(--mut);font-size:28px;padding:25px;} #moniteur-vide p,#moniteur-etat {font-size:12px;} .tl-item.en-lecture {box-shadow:inset 0 0 0 2px var(--ok);} @media(max-width:540px) { .moniteur {padding:16px;} .moniteur-entete {align-items:flex-start;flex-direction:column;gap:14px;} .moniteur-ecran video {height:300px;} }
 </style>
 </head>
 <body>
@@ -256,7 +257,7 @@ pre { background:#080c11; }
   </div>
 </div>
 
-<div class="page" id="p-projets"><h2>Mes projets</h2><p class="intro">Une timeline par projet. Chaque TAG possède son mini-clip ; chaque liaison se génère entre deux clips.</p><div id="liste-projets"></div><div id="timeline-projet"></div></div>
+<div class="page" id="p-projets"><h2>Mes projets</h2><p class="intro">Une timeline par projet. Chaque TAG possède son mini-clip ; chaque liaison se génère entre deux clips.</p><div id="liste-projets"></div><div id="moniteur-projet"></div><div id="timeline-projet"></div></div>
 <div class="page" id="p-modeles"><h2>Modèles</h2><p class="intro">Installez les poids compatibles et choisissez ceux utilisés pour vos prochaines générations. Les clips existants sont conservés.</p><div class="info">Les moteurs LTX et MuseTalk doivent être installés séparément. Les poids se téléchargent depuis leurs dépôts d’origine ; consultez leurs licences dans les liens Sources. Les accès restreints nécessitent HF_TOKEN et une autorisation obtenue sur Hugging Face.</div><p class="mut modele-chemin" id="modeles-emplacement"></p><p id="modeles-calcul" class="mut" aria-live="polite"></p><p id="modeles-erreur" class="tl-error" role="alert"></p><div id="modeles-transfert" aria-live="polite"></div><div id="modeles-grille"></div><section class="encadre"><h3>Importer un pack vidéo déjà installé</h3><p class="mut">Dossier local LTX-2.3 contenant la variante distilled et ses composants. Les fichiers ne seront pas copiés.</p><label for="modele-import-path">Chemin absolu du dossier</label><input id="modele-import-path" placeholder="/chemin/vers/le/modele"><label for="modele-import-nom">Nom dans le catalogue</label><input id="modele-import-nom" placeholder="Mon modèle LTX-2.3"><p><button class="sec" onclick="importerModele()">Ajouter au catalogue</button></p></section><section id="modeles-voix" class="modeles-groupe"></section></div>
 <!-- ================= MES VIDÉOS ================= -->
 <div class="page" id="p-videos">
@@ -319,6 +320,7 @@ async function api(url, corps) { const r = await fetch(url, { method: corps ? 'P
 
 // ---------------- navigation ----------------
 function page(p) {
+  if(p!=='projets') $('moniteur-video')?.pause();
   $('page-label').textContent = {nouvelle:'Nouvelle vidéo',projets:'Mes projets',modeles:'Modèles',videos:'Mes vidéos',avatars:'Mes avatars',avance:'Mode avancé'}[p];
   document.querySelectorAll('#menu button[data-p]').forEach(b => b.classList.toggle('actif', b.dataset.p === p));
   document.querySelectorAll('.page').forEach(x => x.classList.toggle('actif', x.id === 'p-' + p));
@@ -573,6 +575,7 @@ async function rafraichir(forcer) {
   if (forcer || e !== empreinte) { empreinte = e; dessiner(); }
   else { if ($('p-videos').classList.contains('actif') && E.taches.some(t => t.etat === 'en cours' && t.type === 'video')) listeVideos(); dessinerTaches(); }
   afficherProgressions();
+  await actualiserMoniteur();
 }
 let TL_DIRTY = false;
 function ouvrirProjet(id) { PROJET=id; ELEMENT=null; TL_DIRTY=false; TL_EMPREINTE=''; dessinerProjets(); }
@@ -596,6 +599,7 @@ function statutElement(p,b,transition) {
 function dessinerProjets() {
   $('liste-projets').innerHTML=PROJET ? '<button class="sec petit" onclick="PROJET=null;TL_DIRTY=false;dessinerProjets()">← Tous les projets</button>' : PROJETS.map(p=>`<div class="tl-project"><div><h3>${esc(p.nom)}</h3><p>${p.blocs.length} blocs TAG · ${p.transitions.length} transitions · ${esc(tige(p.avatar))}</p></div><button onclick="ouvrirProjet('${p.id}')">Ouvrir la timeline →</button></div>`).join('') || '<div class="vide">Aucun projet pour le moment.<br><br><button onclick="page(\'nouvelle\')">Créer un projet</button></div>';
   const p=PROJETS.find(p=>p.id===PROJET);
+  monterMoniteur(p);
   if(!p) { $('timeline-projet').innerHTML=''; return; }
   const signature=JSON.stringify([p,E.taches.filter(t=>t.params.projet===p.id).map(t=>[t.id,t.etat,t.etape]),ELEMENT]);
   if(TL_DIRTY || signature===TL_EMPREINTE) return;
@@ -608,7 +612,7 @@ function dessinerProjets() {
   const item=(b,isPont,i)=>{
     const debut=cumul; cumul+=b.duree;
     const pret=isPont?pontCourant(p,b):clipCourant(b);
-    return `<button class="tl-item ${isPont?'transition':''} ${b.id===ELEMENT?'selected':''}" onclick="choisirElement('${b.id}')"><strong>${isPont?'↔ Transition':`${i+1}. ${esc(ton(b.ton).nom)}`}</strong>${b.clip?`<img src="${f(isPont?'ponts':'clips',b.clip.replace(/\.mp4$/,'.jpg'))}" alt="Aperçu ${isPont?'transition':'clip'}" onerror="this.style.display='none'">`:`<div class="tl-placeholder">${isPont?'↔':'▷'}</div>`}<small>${debut.toFixed(1)} – ${cumul.toFixed(1)} s</small><p>${isPont?'Pause entre les deux blocs':esc(b.texte || 'Texte à compléter')}</p><span class="tl-status ${pret?'ready':''}">${esc(statutElement(p,b,isPont))}</span></button>`;
+    return `<button data-element="${b.id}" class="tl-item ${isPont?'transition':''} ${b.id===ELEMENT?'selected':''}" onclick="choisirElement('${b.id}')"><strong>${isPont?'↔ Transition':`${i+1}. ${esc(ton(b.ton).nom)}`}</strong>${b.clip?`<img src="${f(isPont?'ponts':'clips',b.clip.replace(/\.mp4$/,'.jpg'))}" alt="Aperçu ${isPont?'transition':'clip'}" onerror="this.style.display='none'">`:`<div class="tl-placeholder">${isPont?'↔':'▷'}</div>`}<small>${debut.toFixed(1)} – ${cumul.toFixed(1)} s</small><p>${isPont?'Pause entre les deux blocs':esc(b.texte || 'Texte à compléter')}</p><span class="tl-status ${pret?'ready':''}">${esc(statutElement(p,b,isPont))}</span></button>`;
   };
   const strip=p.blocs.map((b,i)=>item(b,false,i)+(p.transitions[i]?item(p.transitions[i],true,i):'')).join('');
   const dernierExport=p.export ? `<div class="encadre"><strong>${p.export.revision===p.revision?'Dernier export':'Export précédent · la timeline a changé'}</strong><p><video controls playsinline preload="metadata" style="width:100%;max-height:350px" src="${f('videos',p.export.fichier)}"></video></p><a href="${f('videos',p.export.fichier)}" download>Télécharger la vidéo</a></div>`:'';
@@ -678,6 +682,50 @@ function afficherProgressions() {
   const actives=E.taches.filter(t=>t.etat==='en cours'), attente=E.taches.filter(t=>t.etat==='en attente');
   $('suivi-global').innerHTML=actives.map(t=>progressionHTML(t)).join('')+(actives.length&&attente.length?`<p class="mut" style="font-size:12px">${attente.length} tâche(s) en attente</p>`:'');
   document.querySelectorAll('[data-suivi-tache]').forEach(el=>{const t=E.taches.find(t=>t.id===el.dataset.suiviTache);el.innerHTML=t&&['en cours','en attente'].includes(t.etat)?progressionHTML(t):'';});
+}
+
+let MONITEUR={projet:null,etat:null,source:null};
+function monterMoniteur(p) {
+  const root=$('moniteur-projet');
+  if(!p){$('moniteur-video')?.pause();root.innerHTML='';MONITEUR={projet:null,etat:null,source:null};return;}
+  if(MONITEUR.projet!==p.id || !root.children.length){
+    $('moniteur-video')?.pause();
+    MONITEUR={projet:p.id,etat:null,source:null};
+    root.innerHTML=`<section class="moniteur"><div class="moniteur-entete"><div><div class="eyebrow">Moniteur du montage</div><h3>${esc(p.nom)}</h3></div><label class="moniteur-boucle"><input type="checkbox" onchange="$('moniteur-video').loop=this.checked"> Lecture en boucle</label></div><div class="moniteur-ecran"><video id="moniteur-video" controls playsinline preload="metadata" ontimeupdate="curseurMoniteur()" hidden></video><div id="moniteur-vide">▷<p>Prévisualisez les rushs et leurs transitions à la suite.</p></div></div><div class="tl-actions"><button id="moniteur-tout" onclick="previsualiserMontage()">▶ Prévisualiser la timeline</button><button class="sec" id="moniteur-jonction" onclick="previsualiserMontage(ELEMENT)">↔ Revoir cette jonction</button></div><p id="moniteur-etat" class="mut" aria-live="polite">Lecture des éléments prêts, dans l’ordre. Voix témoin disponibles, sans lipsync final.</p></section>`;
+  }
+  const transition=p.transitions.find(t=>t.id===ELEMENT), busy=MONITEUR.etat?.statut==='en cours';
+  $('moniteur-tout').disabled=busy;
+  $('moniteur-jonction').disabled=busy||!transition||!pontCourant(p,transition);
+  $('moniteur-jonction').title=transition?'Lit le clip précédent, la transition, puis le clip suivant.':'Sélectionnez une transition prête dans la timeline.';
+  if(MONITEUR.etat?.statut==='pret' && MONITEUR.etat.revision!==p.revision) $('moniteur-etat').textContent='Le montage a changé. Prévisualisez à nouveau pour actualiser cet aperçu.';
+}
+async function previsualiserMontage(jonction=null){
+  if(TL_DIRTY && !await enregistrerElement())return;
+  try {
+    $('moniteur-etat').textContent='Préparation de l’aperçu vidéo…';
+    MONITEUR.etat=await api('/api/apercu',{projet:PROJET,jonction});
+    appliquerMoniteur();
+  }catch(e){$('moniteur-etat').textContent=e.message;}
+}
+function appliquerMoniteur(){
+  const p=PROJETS.find(p=>p.id===PROJET), s=MONITEUR.etat;if(!p||!s||MONITEUR.projet!==p.id)return;
+  monterMoniteur(p);
+  if(s.statut==='en cours'){$('moniteur-etat').innerHTML='<span class="barre indeterminee" style="display:block"><div style="width:35%"></div></span>Préparation de l’aperçu sur le processeur…';return;}
+  if(s.statut==='erreur'){$('moniteur-etat').textContent=s.erreur;return;}
+  if(s.statut!=='pret')return;
+  const video=$('moniteur-video'),url=f('sequences',s.fichier);
+  if(MONITEUR.source!==url){video.src=url;video.load();video.hidden=false;$('moniteur-vide').hidden=true;MONITEUR.source=url;}
+  if(s.revision!==p.revision)return;
+  $('moniteur-etat').textContent=(s.jonction?'Jonction : clip → transition → clip. ':s.partiel?`Aperçu partiel : ${s.nombre}/${s.total} éléments. Arrêt avant le premier élément manquant ou à refaire. `:'Timeline complète. ')+`${s.duree.toFixed(1)} s · Voix témoin, sans lipsync final. Utilisez ▶ pour lire.`;
+}
+async function actualiserMoniteur(){
+  if(!$('p-projets').classList.contains('actif')||MONITEUR.etat?.statut!=='en cours')return;
+  try{MONITEUR.etat=await api('/api/apercu?projet='+encodeURIComponent(MONITEUR.projet));appliquerMoniteur();}catch(e){$('moniteur-etat').textContent='Connexion au suivi de l’aperçu interrompue.';}
+}
+function curseurMoniteur(){
+  const v=$('moniteur-video'),s=MONITEUR.etat;if(!v||!s)return;
+  const c=s.chapitres?.find(c=>v.currentTime>=c.debut&&v.currentTime<c.fin);
+  document.querySelectorAll('.tl-item[data-element]').forEach(el=>el.classList.toggle('en-lecture',el.dataset.element===c?.id));
 }
 
 let MODELES_SIGNATURE='', VOIX_MODELES=null;

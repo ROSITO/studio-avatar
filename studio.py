@@ -420,6 +420,7 @@ class H(BaseHTTPRequestHandler):
             libs = {s.name: lib_avatar(s.name) for s in (ICI / 'sources').iterdir() if not s.name.startswith('.')}
             return self.json(dict(taches=TACHES[-60:][::-1], fichiers=fichiers(), t7=GESTION_MODELES.selection()['video']['installe'], base_clip=BASE_CLIP,
                                   tons=[dict(cle=k, nom=n, emoji=e, balise=bs[0]) for k, n, e, bs, _ in TONS], balises=BALISES, libs=libs))
+        if u.path == '/api/apercu': return self.json(apercus.etat(parse_qs(u.query).get('projet', [''])[0]))
         if u.path == '/api/modeles/voix': return self.json(GESTION_MODELES.voix_catalogue())
         if u.path == '/api/modeles': return self.json(GESTION_MODELES.catalogue())
         if u.path == '/api/projets': return self.json(projets.liste())
@@ -464,6 +465,9 @@ class H(BaseHTTPRequestHandler):
         self.send_error(400)
     def do_POST(self):
         u = urlparse(self.path); d = json.loads(self.corps() or b'{}')
+        if u.path == '/api/apercu':
+            try: return self.json(apercus.demander(d.get('projet'), d.get('jonction')))
+            except (ValueError, KeyError) as e: return self.json(dict(erreur=str(e)), 400)
         if u.path == '/api/modeles':
             try:
                 action = d.get('action')
@@ -512,6 +516,8 @@ class H(BaseHTTPRequestHandler):
 
 import projets
 import modeles
+import apercus
+apercus.installer(sys.modules[__name__])
 GESTION_MODELES = modeles.Gestionnaire(sys.modules[__name__])
 projets.installer(sys.modules[__name__])
 

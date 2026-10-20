@@ -97,6 +97,27 @@ Once configured: **Nouvelle vidéo → Créer le projet → Mes projets**. Creat
 project first, generate selected clips/transitions, and finally choose
 **Assembler et synchroniser**. Previous exported videos remain under **Mes vidéos**.
 
+## Rush preview monitor
+
+Above the project timeline, **Moniteur du montage** builds a lightweight CPU-only
+preview from the existing rushes. It uses the same retained frames, transition
+anchor trimming, timing and available block audio as the final export. It never
+runs LTX or MuseTalk and does not replace the final export.
+
+- **Prévisualiser la timeline** reads the contiguous ready portion from the start,
+  stopping before the first missing or stale element. Partial previews are labeled.
+- Select a ready transition and choose **Revoir cette jonction** to preview only
+  the preceding clip, the bridge and the following clip.
+- Enable **Lecture en boucle** to review a join repeatedly. Native playback,
+  seeking and fullscreen controls are available; the playing element is highlighted.
+- Changing the project marks an older preview as outdated. Rebuild explicitly;
+  previews are cached by source versions and durations, without regenerating rushes.
+
+The monitor combines video and available speech audio at reduced resolution, with
+no final lip-sync. Preview work has its own CPU process and never replaces the
+GPU worker's process handle. Cached preview media stays in the ignored local
+`sequences/` folder. Its logic is in `apercus.py`; tests use synthetic media.
+
 ## Model catalogue and downloads
 
 The **Modèles** page provides:
