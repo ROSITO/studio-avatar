@@ -184,6 +184,7 @@ def executer(t):
         exporter(t,p); return
     if t.get('annuler'): raise RuntimeError('Tâche annulée')
     x['modele'] = (t.get('modeles') or S.GESTION_MODELES.selection())['video']['id']
+    p['revision'] += 1  # New rushes also invalidate older partial previews/exports.
     with VERROU: sauver(p)
     t['resultat']=dict(projet=pid,element=x['id'],fichier=x['clip'])
 
