@@ -97,6 +97,23 @@ Once configured: **Nouvelle vidéo → Créer le projet → Mes projets**. Creat
 project first, generate selected clips/transitions, and finally choose
 **Assembler et synchroniser**. Previous exported videos remain under **Mes vidéos**.
 
+## Automatic generation and seeds
+
+In a project, **Tout générer automatiquement** runs all remaining clips and
+transitions, then assembles and lip-syncs the final video. It preserves ready
+rushes. A single resumable orchestration task tracks the sequence, stops on the
+first failure/cancellation, and never leaves dependent export jobs running after
+a failure. Restarting automatic generation reuses completed outputs and audio.
+The individual generation buttons and explicit export remain available.
+
+Seeds are random by default for clips and transitions (including existing projects
+without an explicit seed mode). Each new inference task draws a seed and persists
+it before running the engine. Resuming that task keeps the draw; a new regeneration
+draws again. Choose **Fixer une seed manuellement** to enter a reproducible integer
+from 0 to 2147483647. Manual seeds never increment on regeneration. The last used
+seed remains visible for inspection and copying into manual mode. Advanced movement
+generation also defaults to random seeds.
+
 ## Rush preview monitor
 
 Above the project timeline, **Moniteur du montage** builds a lightweight CPU-only

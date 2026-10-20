@@ -1,5 +1,5 @@
 """Projets persistants : blocs TAG et transitions LTX indépendants."""
-import json, math, threading, time, uuid
+import json, math, secrets, threading, time, uuid
 
 
 def installer(studio):
@@ -25,12 +25,14 @@ def liste():
         return sorted([json.loads(f.read_text()) for f in RACINE.glob('*.json')], key=lambda p: -p['modifie'])
 def actif(pid):
     return any(t['type'].startswith('projet_') and t['params'].get('projet') == pid and t['etat'] in ('en attente', 'en cours') for t in S.TACHES)
+def seed_aleatoire(): return secrets.randbelow(2**31)
+
 def bloc(ton='neutre', texte=''):
     cle = next(gs[0] for k, *_, gs in S.TONS if k == ton)
-    return dict(id=ident(), ton=ton, texte=texte, prompt=S.GESTES[cle], duree=max(1.4, len(texte)/14), seed=31, revision=0, clip=None, audio=None)
+    return dict(id=ident(), ton=ton, texte=texte, prompt=S.GESTES[cle], duree=max(1.4, len(texte)/14), seed=seed_aleatoire(), seed_mode='auto', revision=0, clip=None, audio=None)
 def relier(p):
     anciens = {(x['gauche'],x['droite']):x for x in p.get('transitions',[])}
-    p['transitions'] = [anciens.get((a['id'],b['id'])) or dict(id=ident(),gauche=a['id'],droite=b['id'],duree=1.0,seed=5,revision=0,clip=None) for a,b in zip(p['blocs'],p['blocs'][1:])]
+    p['transitions'] = [anciens.get((a['id'],b['id'])) or dict(id=ident(),gauche=a['id'],droite=b['id'],duree=1.0,seed=seed_aleatoire(),seed_mode='auto',revision=0,clip=None) for a,b in zip(p['blocs'],p['blocs'][1:])]
 def courant(b): return bool(b.get('clip') and b.get('rendu_revision') == b['revision'])
 def pont_pret(p,b):
     a,z = [next(x for x in p['blocs'] if x['id']==b[k]) for k in ('gauche','droite')]
@@ -79,15 +81,19 @@ def modifier(pid,d):
                 if 0<=j<len(p['blocs']): p['blocs'][i],p['blocs'][j]=p['blocs'][j],p['blocs'][i]
             elif action=='modifier':
                 changements={}
-                for k in ('texte','prompt','ton','duree','seed'):
-                    if k not in d or k not in x: continue
+                for k in ('texte','prompt','ton','duree','seed','seed_mode'):
+                    if k not in d or (k not in x and k!='seed_mode'): continue
                     v=d[k]
                     if k=='duree':
                         v=float(v)
                         if not math.isfinite(v) or not .5<=v<=20: raise ValueError('Durée : entre 0,5 et 20 secondes.')
-                    if k=='seed': v=int(v)
+                    if k=='seed':
+                        if isinstance(v,bool) or not math.isfinite(float(v)) or float(v)!=int(v): raise ValueError('La seed doit être un entier.')
+                        v=int(v)
+                        if not 0<=v<2**31: raise ValueError('Seed : entier entre 0 et 2147483647.')
+                    if k=='seed_mode' and v not in ('auto','manuel'): raise ValueError('Mode de seed invalide')
                     if k=='ton' and v not in [a[0] for a in S.TONS]: raise ValueError('TAG inconnu')
-                    if v!=x[k]: changements[k]=v
+                    if v!=x.get(k, 'auto' if k=='seed_mode' else None): changements[k]=v
                 if changements:
                     if 'texte' in changements:
                         if p['audio_source']: raise ValueError('Le texte ne peut pas modifier un audio importé.')
@@ -103,7 +109,11 @@ def ajouter_tache(p,genre,e=None):
 def lancer(pid,d):
     with VERROU:
         p=lire(pid); action=d['action']
-        if action=='manquants':
+        if action=='automatique':
+            if actif(pid): return p
+            if not p['audio_source'] and (not p.get('voix') or any(not b['texte'].strip() for b in p['blocs'])): raise ValueError('Complétez le texte de tous les blocs et choisissez une voix avant le lancement automatique.')
+            ajouter_tache(p,'auto')
+        elif action=='manquants':
             for b in p['blocs']:
                 if not courant(b): ajouter_tache(p,'clip',b)
             # Les transitions attendent leurs deux clips dans la même file séquentielle.
@@ -116,7 +126,6 @@ def lancer(pid,d):
             if any(t['type']=='projet_'+action and t['params'].get('projet')==pid and t['params'].get('element')==b['id'] and t['etat'] in ('en attente','en cours') for t in S.TACHES): return p
             # Invalider immédiatement les ponts adjacents, même si la génération échoue.
             b['revision']+=1
-            if b.get('clip'): b['seed']+=1
             p['revision']+=1; sauver(p); ajouter_tache(p,action,b)
         elif action=='export':
             if actif(pid): raise ValueError('Attendez la fin des générations avant d’assembler.')
@@ -127,10 +136,19 @@ def lancer(pid,d):
 
 def executer(t):
     pid=t['params']['projet']; p=lire(pid); genre=t['type'][7:]
+    if genre=='auto': automatique(t,p); return
     x=next((b for b in p['blocs']+p['transitions'] if b['id']==t['params'].get('element')),None)
-    suffix=f"projet-{pid}-{t['id']}"
+    suffix=f"projet-{pid}-{t.get('generation_id', t['id'])}"
     # Une sortie déjà validée avant l’arrêt du serveur ne repasse pas dans LTX.
     if x and x.get('clip') == suffix+'.mp4' and (courant(x) if genre=='clip' else pont_pret(p,x)): return
+    if genre in ('clip','pont'):
+        if not x: raise ValueError('Élément supprimé')
+        # Persist the drawn seed on the task BEFORE inference: restart/retry uses
+        # the same draw, while a new regeneration gets a new random draw.
+        if 'seed_effective' not in t:
+            t['seed_effective'] = seed_aleatoire() if x.get('seed_mode','auto')=='auto' else x['seed']
+            S.sauver()
+        x['seed'] = t['seed_effective']
     if genre=='clip':
         if not x: raise ValueError('Bloc supprimé')
         audio=S.ICI/'audios'/f'{suffix}.wav'
@@ -168,6 +186,36 @@ def executer(t):
     x['modele'] = (t.get('modeles') or S.GESTION_MODELES.selection())['video']['id']
     with VERROU: sauver(p)
     t['resultat']=dict(projet=pid,element=x['id'],fichier=x['clip'])
+
+def automatique(t,p):
+    """One resumable orchestration task, no dependent jobs left queued on failure."""
+    pid=p['id']; etapes=[]
+    for i,b in enumerate(p['blocs']):
+        etapes.append(('clip',b['id']))
+        if i: etapes.append(('pont',p['transitions'][i-1]['id']))
+    etapes.append(('export',None))
+    class SousTache(dict):
+        def __setitem__(self,key,value):
+            super().__setitem__(key,value)
+            if key=='etape':
+                t['etape']=f"Automatique {numero+1}/{len(etapes)} · {value}"
+            if key=='seed_effective':
+                t.setdefault('seeds',{})[element]=value
+        def get(self,key,default=None):
+            if key=='annuler': return t.get('annuler',False)
+            return super().get(key,default)
+    for numero,(genre,element) in enumerate(etapes):
+        if t.get('annuler'): raise RuntimeError('Génération automatique annulée')
+        p=lire(pid)
+        x=next((x for x in p['blocs']+p['transitions'] if x['id']==element),None)
+        pret=courant(x) if genre=='clip' else pont_pret(p,x) if genre=='pont' else bool(p.get('export') and p['export']['revision']==p['revision'] and (S.ICI/'videos'/p['export']['fichier']).is_file())
+        t['automatique']=dict(faits=numero,total=len(etapes));S.sauver()
+        if pret: continue
+        child=SousTache(id=t['id'],type='projet_'+genre,params=dict(projet=pid,element=element),generation_id=t['id']+'-'+str(element),modeles=t.get('modeles') or S.GESTION_MODELES.selection())
+        if element in t.get('seeds',{}):dict.__setitem__(child,'seed_effective',t['seeds'][element])
+        executer(child)
+    t['automatique']=dict(faits=len(etapes),total=len(etapes));t['resultat']=dict(projet=pid,export=lire(pid)['export']);S.sauver()
+
 
 def exporter(t,p):
     if not all(courant(b) for b in p['blocs']) or not all(pont_pret(p,b) for b in p['transitions']): raise ValueError('Timeline incomplète')
