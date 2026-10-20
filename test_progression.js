@@ -29,3 +29,9 @@ const running={id:'clip3',params:{projet:'p'},etat:'en cours',cree:1};
 assert.equal(context.choisirTacheProjet([waiting,running],'p').id,'clip3');
 assert.equal(context.choisirTacheProjet([waiting,{...waiting,id:'older',cree:0}],'p').id,'older');
 assert.equal(context.choisirTacheProjet([running],'other'),undefined);
+// The displayed timeline reserves returns INSIDE spoken blocks (no extra duration).
+const mp={blocs:[{id:'a',duree:2.32},{id:'b',duree:2.12},{id:'c',duree:2.32}]};
+const mc=context.imagesBlocs(mp);
+assert.equal(Object.values(mc).reduce((a,b)=>a+b,0),162);
+assert.equal(context.raccordIntegre(mp,{gauche:'a',duree:.5}).coupe,44);
+assert.equal(context.raccordIntegre(mp,{gauche:'a',duree:.5}).frames,12);

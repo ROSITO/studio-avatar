@@ -1,5 +1,7 @@
 """Projets persistants : blocs TAG et transitions LTX indépendants."""
 import json, math, secrets, threading, time, uuid
+import montage
+from pathlib import Path
 
 
 def installer(studio):
@@ -15,14 +17,18 @@ def lire(pid):
     if not isinstance(pid, str) or not pid.isalnum(): raise ValueError('Projet invalide')
     f = RACINE / (pid + '.json')
     if not f.exists(): raise ValueError('Projet introuvable')
-    return json.loads(f.read_text())
+    p=json.loads(f.read_text())
+    if p.get('montage_version',1)<montage.VERSION:
+        p['montage_version']=montage.VERSION
+        p['revision']+=1  # Old exports/preview revisions must not look current.
+    return p
 def sauver(p):
     p['modifie'] = time.time()
     f = RACINE / (p['id'] + '.json'); tmp = f.with_suffix('.tmp')
     tmp.write_text(json.dumps(p, ensure_ascii=False, indent=2)); tmp.replace(f)
 def liste():
     with VERROU:
-        return sorted([json.loads(f.read_text()) for f in RACINE.glob('*.json')], key=lambda p: -p['modifie'])
+        return sorted([lire(f.stem) for f in RACINE.glob('*.json')], key=lambda p: -p['modifie'])
 def actif(pid):
     return any(t['type'].startswith('projet_') and t['params'].get('projet') == pid and t['etat'] in ('en attente', 'en cours') for t in S.TACHES)
 def seed_aleatoire(): return secrets.randbelow(2**31)
@@ -32,16 +38,17 @@ def bloc(ton='neutre', texte=''):
     return dict(id=ident(), ton=ton, texte=texte, prompt=S.GESTES[cle], duree=max(1.4, len(texte)/14), seed=seed_aleatoire(), seed_mode='auto', revision=0, clip=None, audio=None)
 def relier(p):
     anciens = {(x['gauche'],x['droite']):x for x in p.get('transitions',[])}
-    p['transitions'] = [anciens.get((a['id'],b['id'])) or dict(id=ident(),gauche=a['id'],droite=b['id'],duree=1.0,seed=seed_aleatoire(),seed_mode='auto',revision=0,clip=None) for a,b in zip(p['blocs'],p['blocs'][1:])]
+    p['transitions'] = [anciens.get((a['id'],b['id'])) or dict(id=ident(),gauche=a['id'],droite=b['id'],duree=0.5,seed=seed_aleatoire(),seed_mode='auto',revision=0,clip=None) for a,b in zip(p['blocs'],p['blocs'][1:])]
 def courant(b): return bool(b.get('clip') and b.get('rendu_revision') == b['revision'])
 def pont_pret(p,b):
     a,z = [next(x for x in p['blocs'] if x['id']==b[k]) for k in ('gauche','droite')]
-    return courant(a) and courant(z) and courant(b) and b.get('extremites') == [a['clip'],z['clip']]
+    r=montage.raccord(p,b)
+    return courant(a) and courant(z) and courant(b) and b.get('extremites') == [a['clip'],z['clip']] and b.get('raccord_version')==montage.VERSION and b.get('coupe_frame')==r['coupe'] and b.get('frames_cible')==r['frames']
 def creer(d):
     avatar=d.get('avatar','')
     if '/' in avatar or not (S.ICI/'sources'/avatar).is_file(): raise ValueError('Photo introuvable')
     if d.get('audio') and ('/' in d['audio'] or not (S.ICI/'audios'/d['audio']).is_file()): raise ValueError('Audio introuvable')
-    p=dict(id=ident(),nom=d.get('nom') or 'Nouveau projet',avatar=avatar,voix=d.get('voix'),langue=d.get('langue','fr'),audio_source=d.get('audio'),blocs=[],transitions=[],revision=0,export=None)
+    p=dict(id=ident(),nom=d.get('nom') or 'Nouveau projet',avatar=avatar,voix=d.get('voix'),langue=d.get('langue','fr'),audio_source=d.get('audio'),blocs=[],transitions=[],revision=0,export=None,montage_version=montage.VERSION)
     # Une balise reconnue ouvre un bloc ; la ponctuation ne le découpe jamais.
     import re
     ton='neutre'; texte=''
@@ -171,15 +178,16 @@ def executer(t):
         if not courant(a) or not courant(z): raise ValueError('Les deux clips voisins doivent être prêts.')
         premiere=S.ICI/'ponts'/f'{suffix}-debut.png'; derniere=S.ICI/'ponts'/f'{suffix}-fin.png'
         # Dernière image réellement retenue au montage (le clip LTX peut dépasser la durée du bloc).
-        n=max(1,round(a['duree']*24))
+        retour=montage.raccord(p,x);n=retour['coupe']
         S.lancer(t,['ffmpeg','-v','error','-y','-i',S.ICI/'clips'/a['clip'],'-vf',f'select=eq(n\\,{n-1})','-frames:v','1','-update','1',premiere])
         S.lancer(t,['ffmpeg','-v','error','-y','-i',S.ICI/'clips'/z['clip'],'-frames:v','1','-update','1',derniere])
         W,H=S.taille_image(S.ICI/'clips'/a['clip']); out=S.ICI/'ponts'/f'{suffix}.mp4'
-        t['etape']='Transition entre les deux poses'; S.sauver()
+        t['etape']='Retour intégré à la pose commune'; S.sauver()
         prompt='The same person smoothly moves from the first pose to the final pose. Mouth closed. Natural gentle motion, consistent face, clothing and background. Static camera.'
-        S.ltx(t,[(premiere,0),(derniere,'last')],prompt,W,H,S.images_ltx(round(x['duree']*24)+2),x['seed'],out)
+        S.ltx(t,[(premiere,0),(derniere,'last')],prompt,W,H,S.images_ltx(retour['frames']+2),x['seed'],out)
         S.lancer(t,['ffmpeg','-v','error','-y','-i',out,'-frames:v','1','-vf','scale=320:-2',out.with_suffix('.jpg')])
         x['clip']=out.name; x['rendu_revision']=x['revision']; x['extremites']=[a['clip'],z['clip']]
+        x.update(raccord_version=montage.VERSION,coupe_frame=retour['coupe'],frames_cible=retour['frames'])
     else:
         exporter(t,p); return
     if t.get('annuler'): raise RuntimeError('Tâche annulée')
@@ -209,7 +217,7 @@ def automatique(t,p):
         if t.get('annuler'): raise RuntimeError('Génération automatique annulée')
         p=lire(pid)
         x=next((x for x in p['blocs']+p['transitions'] if x['id']==element),None)
-        pret=courant(x) if genre=='clip' else pont_pret(p,x) if genre=='pont' else bool(p.get('export') and p['export']['revision']==p['revision'] and (S.ICI/'videos'/p['export']['fichier']).is_file())
+        pret=courant(x) if genre=='clip' else pont_pret(p,x) if genre=='pont' else bool(p.get('export') and p['export']['revision']==p['revision'] and p['export'].get('montage_version')==montage.VERSION and (S.ICI/'videos'/p['export']['fichier']).is_file())
         t['automatique']=dict(faits=numero,total=len(etapes));S.sauver()
         if pret: continue
         child=SousTache(id=t['id'],type='projet_'+genre,params=dict(projet=pid,element=element),generation_id=t['id']+'-'+str(element),modeles=t.get('modeles') or S.GESTION_MODELES.selection())
@@ -221,28 +229,25 @@ def automatique(t,p):
 def exporter(t,p):
     if not all(courant(b) for b in p['blocs']) or not all(pont_pret(p,b) for b in p['transitions']): raise ValueError('Timeline incomplète')
     suffix=f"projet-{p['id']}-{t['id']}"; seq=S.ICI/'sequences'/f'{suffix}.mp4'; audio=S.ICI/'audios'/f'{suffix}.wav'
-    morceaux=[]; sons=[]; args=['ffmpeg','-v','error','-y']; vf=[]; af=[]
-    for i,b in enumerate(p['blocs']):
-        n=max(1,round(b['duree']*24)); morceaux.append((S.ICI/'clips'/b['clip'],0,n)); sons.append((S.ICI/'audios'/b['audio'],n/24))
-        if i<len(p['transitions']):
-            tr=p['transitions'][i]; n=max(1,round(tr['duree']*24))
-            # Retirer les deux images d'ancrage pour ne pas dupliquer les poses aux jonctions.
-            total=S.images_ltx(n+2); morceaux.append((S.ICI/'ponts'/tr['clip'],1,total-1)); sons.append((None,n/24))
-    W,H=S.taille_image(morceaux[0][0])
-    for k,((f,a,z),(_,d)) in enumerate(zip(morceaux,sons)):
-        args+=['-i',str(f)]
+    plan=montage.morceaux(S,p)
+    if any(not m['audio'] for m in plan): raise ValueError('Un audio de bloc est absent du disque.')
+    args=['ffmpeg','-v','error','-y'];vf=[];af=[]
+    W,H=S.taille_image(Path(plan[0]['fichier']))
+    for k,m in enumerate(plan):
+        args+=['-i',m['fichier']]
+        a,z,d=m['debut_frame'],m['fin_frame'],m['duree']
         vf.append(f'[{k}:v]trim=start_frame={a}:end_frame={z},setpts=(PTS-STARTPTS)*{d*24/(z-a):.9f},fps=24,scale={W}:{H},setsar=1[v{k}]')
-    vf.append(''.join(f'[v{k}]' for k in range(len(morceaux)))+f'concat=n={len(morceaux)}:v=1:a=0[o]')
+    vf.append(''.join(f'[v{k}]' for k in range(len(plan)))+f'concat=n={len(plan)}:v=1:a=0[o]')
     t['etape']='Assemblage de la timeline'; S.sauver()
     S.lancer(t,args+['-filter_complex',';'.join(vf),'-map','[o]','-c:v','libx264','-pix_fmt','yuv420p',seq])
     args=['ffmpeg','-v','error','-y']
-    for k,(f,d) in enumerate(sons):
-        args+=['-i',str(f)] if f else ['-f','lavfi','-t',str(d),'-i','anullsrc=r=44100:cl=mono']
+    for k,m in enumerate(plan):
+        d=m['duree'];args+=['-ss',str(m['audio_debut']),'-i',m['audio']]
         af.append(f'[{k}:a]aresample=44100,aformat=channel_layouts=mono,apad,atrim=duration={d:.9f},asetpts=PTS-STARTPTS[a{k}]')
-    af.append(''.join(f'[a{k}]' for k in range(len(sons)))+f'concat=n={len(sons)}:v=0:a=1[o]')
+    af.append(''.join(f'[a{k}]' for k in range(len(plan)))+f'concat=n={len(plan)}:v=0:a=1[o]')
     S.lancer(t,args+['-filter_complex',';'.join(af),'-map','[o]',audio])
     out=S.ICI/'videos'/f'{suffix}.mp4'; t['etape']='Synchronisation des lèvres'; S.sauver()
     S.musetalk(t,seq,audio,out,0)
     if t.get('annuler'): raise RuntimeError('Tâche annulée')
-    p['export']=dict(fichier=out.name,revision=p['revision']); sauver(p)
+    p['export']=dict(fichier=out.name,revision=p['revision'],montage_version=montage.VERSION); sauver(p)
     t['resultat']=S.meta(out,projet=p['id'],nom=p['nom'],avatar=p['avatar'])

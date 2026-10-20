@@ -40,11 +40,26 @@ Recognized tags include `[neutral]`, `[curious]`, `[excited]`, `[thoughtful]`,
 `[serious]`, and `[warm]`, with aliases defined in `studio.py`. Unknown tags do not
 start a new block.
 
-Transitions currently add a configurable **silent pause** between spoken blocks
-(one second by default). Imported audio is initially split in proportion to script
-length, not by forced alignment. Adjusting a rendered block's duration can trim
-speech or add silence. Clip-duration edits currently accept 0.5–20 seconds; long
-TAG blocks need to be shortened before generating through the editor.
+Returns to the shared start pose are **integrated into the end of the preceding
+spoken block**, not appended as silent pauses. A 0.5-second return replaces the
+last 0.5 seconds of that block's raw gesture; its speech continues over those
+images. The next block starts immediately. Total duration remains the speech
+length (rounded cumulatively to the nearest 24 fps frame).
+
+The LTX bridge starts from the last retained frame before the replaced tail and
+ends at the following rush's first frame. No end-pose constraint is applied to the
+whole gesture generation. New returns default to 0.5 seconds; saved user durations
+are retained and bounded so at least one original gesture frame remains.
+
+Existing raw clips and audio are preserved. Older append-style bridges are marked
+stale and must be regenerated, because their starting anchor is different. Previous
+exports remain accessible but are labeled outdated. The preview monitor and final
+export share the same edit-decision code in `montage.py`.
+
+Imported audio is initially split in proportion to script length, not by forced
+alignment. Adjusting a block's total duration can still trim speech or add silence;
+this is separate from the integrated return, which never adds a pause. Clip-duration
+edits currently accept 0.5–20 seconds.
 
 ## Start the interface
 
@@ -203,7 +218,8 @@ assembly. LTX, MuseTalk, and speech generation are replaced by test implementati
 no model weights, personal assets, speech server, or GPU are needed. CI runs the
 same suite on Python 3.10 and 3.14.
 
-The server lives in `studio.py`, persistent timeline logic in `projets.py`, the model manager in
+The server lives in `studio.py`, persistent timeline logic in `projets.py`,
+shared video/audio cuts in `montage.py`, the model manager in
 `modeles.py`, and the
 French web UI in `index.html`. Legacy library-based generation remains available
 for compatibility, while the new creation flow uses persistent TAG projects.

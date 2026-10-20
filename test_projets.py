@@ -45,7 +45,7 @@ class ProjetsTest(unittest.TestCase):
         projets.executer(studio.TACHES[0]); self.assertEqual(len(self.generations),5)
         # Montage réel, avec silences des transitions et audio par bloc.
         projets.lancer(pid,dict(action='export')); self.drain(); p=projets.lire(pid)
-        self.assertAlmostEqual(studio.duree(self.root/'videos'/p['export']['fichier']),5.75,delta=.1)
+        self.assertAlmostEqual(studio.duree(self.root/'videos'/p['export']['fichier']),3.75,delta=.1)
         ancien=[b['clip'] for b in p['blocs']]; audios=[b['audio'] for b in p['blocs']]
         projets.lancer(pid,dict(action='clip',element=p['blocs'][1]['id'])); self.drain(); p=projets.lire(pid)
         self.assertEqual(p['blocs'][0]['clip'],ancien[0]); self.assertEqual(p['blocs'][2]['clip'],ancien[2]); self.assertNotEqual(p['blocs'][1]['clip'],ancien[1])

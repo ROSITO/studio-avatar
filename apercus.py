@@ -1,4 +1,5 @@
 """CPU-only, cached rush previews using the same frame boundaries as export."""
+import montage
 import hashlib
 import json
 import subprocess
@@ -35,16 +36,9 @@ def planifier(p,jonction=None):
         # A transition without the following clip does not allow assessing a join.
         if selection and selection[-1]['role']=='transition':selection.pop()
         if not selection:raise ValueError('Générez au moins le premier clip pour prévisualiser la timeline.')
-    morceaux=[]
-    for b in selection:
-        n=max(1,round(b['duree']*24))
-        if b['role']=='clip': dossier,a,z='clips',0,n
-        else:dossier,a,z='ponts',1,S.images_ltx(n+2)-1
-        f=S.ICI/dossier/b['clip']
-        if not f.is_file():raise ValueError('Un rush est absent du disque : régénérez cet élément.')
-        morceaux.append(dict(id=b['id'],role=b['role'],nom=b.get('ton','Transition'),fichier=str(f),debut_frame=a,fin_frame=z,duree=n/24,audio=str(S.ICI/'audios'/b['audio']) if b.get('audio') and (S.ICI/'audios'/b['audio']).is_file() else None,version=f.stat().st_mtime_ns))
+    morceaux=montage.morceaux(S,p,selection)
     signature=hashlib.sha256(json.dumps(morceaux,sort_keys=True).encode()).hexdigest()[:16]
-    return dict(morceaux=morceaux,signature=signature,partiel=not jonction and len(selection)<len(tous),nombre=len(selection),total=len(tous),revision=p['revision'],jonction=jonction,duree=sum(m['duree'] for m in morceaux))
+    return dict(morceaux=morceaux,signature=signature,partiel=not jonction and len(selection)<len(tous),nombre=len(selection),total=len(tous),revision=p['revision'],montage_version=montage.VERSION,jonction=jonction,duree=sum(m['duree'] for m in morceaux))
 
 def etat(pid):
     with VERROU:return dict(ETATS.get(pid,dict(statut='absent')))
@@ -77,7 +71,7 @@ def construire(pid,plan,nom):
         offset=len(morceaux)
         for k,m in enumerate(morceaux):
             d=m['duree']
-            args+=['-i',m['audio']] if m['audio'] else ['-f','lavfi','-t',str(d),'-i','anullsrc=r=44100:cl=mono']
+            args+=['-ss',str(m['audio_debut']),'-i',m['audio']] if m['audio'] else ['-f','lavfi','-t',str(d),'-i','anullsrc=r=44100:cl=mono']
             flt.append(f'[{offset+k}:a]aresample=44100,aformat=channel_layouts=mono,apad,atrim=duration={d:.9f},asetpts=PTS-STARTPTS[a{k}]')
         flt.append(''.join(f'[v{k}][a{k}]' for k in range(len(morceaux)))+f'concat=n={len(morceaux)}:v=1:a=1[v][a]')
         # Do not use studio.lancer: preview CPU work must never replace the GPU process handle.
