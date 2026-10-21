@@ -2,7 +2,7 @@
 """Studio avatar : clips LTX-2.3 (local), ponts de retour à la pose, séquence continue, lipsync MuseTalk 1.5.
 Serveur local sans dépendance (Python ≥ 3.10) + une page web. Lancer : python3 studio.py  → http://localhost:8765
 Une seule tâche GPU à la fois (file d'attente)."""
-import json, math, os, re, secrets, shutil, subprocess, threading, time, uuid
+import functools, json, math, os, re, secrets, shutil, subprocess, threading, time, uuid
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs, unquote
@@ -87,6 +87,12 @@ def nom_sur(s): return re.sub(r'[^A-Za-z0-9._-]+', '-', s).strip('-') or 'sans-n
 def duree(p):
     r = subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', str(p)], capture_output=True, text=True)
     return float(r.stdout.strip() or 0)
+
+@functools.lru_cache(maxsize=4096)
+def _duree_fichier(chemin, mtime_ns, taille): return duree(chemin)
+def duree_cache(f):
+    """Durée relue seulement si le fichier change : /api/etat lançait un ffprobe par média à chaque rafraîchissement."""
+    st = f.stat(); return _duree_fichier(str(f), st.st_mtime_ns, st.st_size)
 
 def taille_image(p):
     r = subprocess.run(['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0', str(p)], capture_output=True, text=True)
@@ -439,7 +445,7 @@ def fichiers():
         for f in sorted((ICI / d).iterdir(), key=lambda f: -f.stat().st_mtime):
             if f.name.startswith(('.', 'fin-')) or f.suffix in ('.json', '.jpg') or '.tmp.' in f.name or f.name.endswith('-16k.wav') or '-25fps' in f.name: continue
             m = f.with_suffix('.json'); l.append(dict(nom=f.name, meta=json.loads(m.read_text()) if m.exists() else {},
-                                                  apercu=f.with_suffix('.jpg').exists(), duree=round(duree(f), 2) if f.suffix in ('.mp4', '.wav', '.mp3', '.m4a') else None))
+                                                  apercu=f.with_suffix('.jpg').exists(), duree=round(duree_cache(f), 2) if f.suffix in ('.mp4', '.wav', '.mp3', '.m4a') else None))
         out[d] = l
     return out
 

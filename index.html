@@ -466,7 +466,7 @@ async function creerProjet() {
   PROJET = projet.id; ELEMENT = projet.blocs[0].id;
   $('texte').value = ''; $('nom').value = ''; CH.source = null;
   $('bloc-texte').hidden = $('bloc-audio').hidden = true; $('ch-texte').classList.remove('sel'); $('ch-audio').classList.remove('sel');
-  await rafraichir(true); aller(1); page('projets');
+  aller(1); page('projets'); await rafraichir(true);   // ouvrir le projet tout de suite, sans attendre le rafraîchissement
 }
 
 // ---------------- mes vidéos ----------------
