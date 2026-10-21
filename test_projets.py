@@ -86,6 +86,14 @@ class ProjetsTest(unittest.TestCase):
             with self.assertRaises(RuntimeError):projets.executer(t)
         t['etat']='erreur'; p=projets.lire(p['id']); self.assertTrue(p['blocs'][0]['audio']); self.assertFalse(p['blocs'][0]['clip'])
         projets.lancer(p['id'],dict(action='clip',element=b['id'])); self.drain(); self.assertEqual(self.voix_count,1)
+    def test_refaire_voix(self):
+        p=self.creer(); b=p['blocs'][1]
+        projets.lancer(p['id'],dict(action='clip',element=b['id'])); self.drain(); p=projets.lire(p['id'])
+        ancien=p['blocs'][1]['audio']; self.assertEqual(self.voix_count,1)
+        p=projets.modifier(p['id'],dict(action='refaire_voix',element=b['id']))
+        self.assertIsNone(p['blocs'][1]['audio']); self.assertFalse(projets.courant(p['blocs'][1]))
+        projets.lancer(p['id'],dict(action='clip',element=b['id'])); self.drain(); p=projets.lire(p['id'])
+        self.assertEqual(self.voix_count,2); self.assertNotEqual(p['blocs'][1]['audio'],ancien); self.assertEqual(p['blocs'][1]['texte'],b['texte'])
     def test_projet_vide_refuse(self):
         for d in (dict(avatar='avatar.png'),dict(avatar='avatar.png',voix='test',texte='  '),dict(avatar='avatar.png',audio='',texte='Bonjour')):
             with self.assertRaises(ValueError): projets.creer(d)

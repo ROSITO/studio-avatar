@@ -112,6 +112,10 @@ def modifier(pid,d):
             if action=='supprimer':
                 if x not in p['blocs'] or len(p['blocs'])==1: raise ValueError('Le projet doit garder au moins un bloc.')
                 p['blocs'].remove(x)  # fichiers conservés, suppression du montage uniquement
+            elif action=='refaire_voix':   # nouvelle prise VoiceStudio sans toucher au texte (une relance de clip garde l’audio)
+                if x not in p['blocs']: raise ValueError('Seuls les blocs ont une voix.')
+                if p['audio_source']: raise ValueError('La voix vient de l’audio importé : rien à refaire.')
+                x['audio']=None; x['revision']+=1
             elif action=='deplacer':
                 i=p['blocs'].index(x); j=i+int(d.get('sens',0))
                 if 0<=j<len(p['blocs']): p['blocs'][i],p['blocs'][j]=p['blocs'][j],p['blocs'][i]
