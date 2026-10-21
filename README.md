@@ -78,6 +78,13 @@ ends at the following rush's first frame. No end-pose constraint is applied to t
 whole gesture generation. New returns default to 0.5 seconds; saved user durations
 are retained and bounded so at least one original gesture frame remains.
 
+**Join check.** LTX does not always reach the imposed end frame: it may paste it
+as the very last image, which shows as a cut. After each transition, the studio
+measures the visible jumps (clip → transition and transition → next clip, on
+96×150 greyscale thumbnails). Above `SEUIL_PONT` (4.0; normal speech motion is
+2–3.5), the transition is regenerated with the next seed, up to 3 attempts, and the
+smoothest one is kept (`ecart` in the project file).
+
 Existing raw clips and audio are preserved. Older append-style bridges are marked
 stale and must be regenerated, because their starting anchor is different. Previous
 exports remain accessible but are labeled outdated. The preview monitor and final

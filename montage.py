@@ -93,3 +93,22 @@ def analyser(studio,t,p,tr):
         return decision
     finally:
         for f in fichiers:f.unlink(missing_ok=True)
+
+
+SEUIL_PONT = 4.0   # écart moyen (0-255, vignettes 96×150) ; parole normale ≈ 2-3,5 ; ponts ratés du 21/10 : 5,4 à 8,6
+
+def vignette(studio,t,video,index):
+    """Image index d'une vidéo, en niveaux de gris 96×150."""
+    dest=studio.ICI/'ponts'/f"{t['id']}-vignette.gray"
+    try:
+        studio.lancer(t,['ffmpeg','-v','error','-y','-i',video,'-vf',f'select=eq(n\\,{index}),scale=96:150,format=gray','-frames:v',1,'-f','rawvideo',dest])
+        return dest.read_bytes()
+    finally: dest.unlink(missing_ok=True)
+
+def ecart_raccord(studio,t,pont,clip_a,coupe,clip_b,n):
+    """Pire saut visible aux deux bouts d’un pont monté (images 1..n-2) : entrée A→pont et sortie pont→B."""
+    def d(x,y): return sum(abs(a-b) for a,b in zip(x,y))/max(1,len(x))
+    entree=d(vignette(studio,t,clip_a,coupe-1),vignette(studio,t,pont,1))
+    sortie=d(vignette(studio,t,pont,n-2),vignette(studio,t,clip_b,0))
+    return round(max(entree,sortie),2)
+

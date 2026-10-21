@@ -240,13 +240,26 @@ def executer(t):
         if retour['frames']==0:
             t['etape']='Coupe directe : poses déjà identiques'; S.sauver()
             S.lancer(t,['ffmpeg','-v','error','-y','-loop','1','-i',derniere,'-frames:v','1','-r','24','-pix_fmt','yuv420p',out])
-        elif moteur(p)=='a2v':
-            # La voix du bloc gauche continue pendant le retour : le pont parle aussi.
-            n=S.images_ltx(retour['frames']+2); voix=S.ICI/'audios'/f'{suffix}-a2v.wav'
-            segment(t,S.ICI/'audios'/a['audio'],retour['coupe']/montage.FPS,n/24,voix)
-            S.ltx(t,[(premiere,0),(derniere,'last')],'The same person keeps talking to the camera, her lips moving in sync with her speech, while she smoothly moves from the first pose to the final pose. '+prompt,W,H,n,x['seed'],out,voix)
         else:
-            S.ltx(t,[(premiere,0),(derniere,'last')],prompt,W,H,S.images_ltx(retour['frames']+2),x['seed'],out)
+            n=S.images_ltx(retour['frames']+2); extra=[]
+            if moteur(p)=='a2v':
+                # La voix du bloc gauche continue pendant le retour : le pont parle aussi.
+                voix=S.ICI/'audios'/f'{suffix}-a2v.wav'; extra=[voix]
+                segment(t,S.ICI/'audios'/a['audio'],retour['coupe']/montage.FPS,n/24,voix)
+                prompt='The same person keeps talking to the camera, her lips moving in sync with her speech, while she smoothly moves from the first pose to the final pose. '+prompt
+            # LTX ne rejoint pas toujours l’image d’arrivée (il la colle en dernière image) : on mesure le raccord monté
+            # et on relance avec la seed suivante, jusqu’à 3 essais ; le meilleur est gardé.
+            meilleur=None
+            for e in range(S.ESSAIS):
+                if e: t['etape']=f'Transition refaite ({e+1}/{S.ESSAIS}) : elle ne rejoignait pas la pose suivante'; S.sauver()
+                sortie=out if not e else out.with_name(f'{suffix}-essai{e}.mp4')
+                S.ltx(t,[(premiere,0),(derniere,'last')],prompt,W,H,n,(x['seed']+e)%2**31,sortie,*extra)
+                ecart=montage.ecart_raccord(S,t,sortie,S.ICI/'clips'/a['clip'],retour['coupe'],S.ICI/'clips'/z['clip'],n)
+                if meilleur is None or ecart<meilleur[0]: meilleur=(ecart,sortie,(x['seed']+e)%2**31)
+                if ecart<=montage.SEUIL_PONT: break
+            if meilleur[1]!=out: meilleur[1].replace(out)
+            for f in S.ICI.glob(f'ponts/{suffix}-essai*.mp4'): f.unlink()
+            x['seed'],x['ecart']=meilleur[2],meilleur[0]
         S.lancer(t,['ffmpeg','-v','error','-y','-i',out,'-frames:v','1','-vf','scale=320:-2',out.with_suffix('.jpg')])
         x['clip']=out.name; x['rendu_revision']=x['revision']; x['extremites']=[a['clip'],z['clip']]
         x.update(raccord_version=montage.VERSION,coupe_frame=retour['coupe'],frames_cible=retour['frames'])

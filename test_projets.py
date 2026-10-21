@@ -94,6 +94,19 @@ class ProjetsTest(unittest.TestCase):
         self.assertIsNone(p['blocs'][1]['audio']); self.assertFalse(projets.courant(p['blocs'][1]))
         projets.lancer(p['id'],dict(action='clip',element=b['id'])); self.drain(); p=projets.lire(p['id'])
         self.assertEqual(self.voix_count,2); self.assertNotEqual(p['blocs'][1]['audio'],ancien); self.assertNotEqual(self.voix_seeds[0],self.voix_seeds[1]); self.assertEqual(p['blocs'][1]['texte'],b['texte'])
+    def test_ponts_relances_si_raccord_mauvais(self):
+        p=self.creer(); pid=p['id']
+        for b in p['blocs']: projets.lancer(pid,dict(action='clip',element=b['id']))
+        self.drain(); p=projets.lire(pid); avant=len(self.generations)
+        ecarts=iter([6.0,5.0,4.5, 3.0])
+        with patch.object(projets.montage,'ecart_raccord',lambda *a:next(ecarts)):
+            projets.lancer(pid,dict(action='pont',element=p['transitions'][0]['id'])); self.drain()
+            self.assertEqual(len(self.generations)-avant,3)            # 3 essais, aucun sous le seuil
+            projets.lancer(pid,dict(action='pont',element=p['transitions'][1]['id'])); self.drain()
+            self.assertEqual(len(self.generations)-avant,4)            # bon du premier coup
+        p=projets.lire(pid); t0=p['transitions'][0]
+        self.assertEqual(t0['ecart'],4.5); self.assertEqual(t0['seed'],self.generations[avant+2][3]); self.assertTrue(projets.pont_pret(p,t0))
+        self.assertFalse(list((self.root/'ponts').glob('*-essai*.mp4')))
     def test_projet_vide_refuse(self):
         for d in (dict(avatar='avatar.png'),dict(avatar='avatar.png',voix='test',texte='  '),dict(avatar='avatar.png',audio='',texte='Bonjour')):
             with self.assertRaises(ValueError): projets.creer(d)
