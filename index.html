@@ -595,14 +595,19 @@ function dessinerCreation() {
   $('cr-modele').innerHTML = !MODELES ? 'Chargement des modèles…' : sel?.installe ? `Modèle : <b>${esc(nom || sel.id)}</b> · à changer dans la page Modèles.${sel.id.startsWith('flux3') ? ' <b>Licence non commerciale.</b>' : ''}` : `<span class="err">Aucun modèle image installé : installez FLUX.2 Klein 4B dans la page Modèles.</span>`;
   $('cr-refs').innerHTML = CR_REFS.map((r, i) => `<div style="width:120px"><img src="${f(r.dossier, r.nom)}" style="width:120px;height:150px;object-fit:cover;border-radius:8px"><select onchange="CR_REFS[${i}].role=this.value">${Object.entries(ROLES_REF).map(([k, v]) => `<option value="${k}" ${r.role === k ? 'selected' : ''}>${v}</option>`).join('')}</select><button class="sec petit" onclick="CR_REFS.splice(${i},1);dessinerCreation()">Retirer</button></div>`).join('') || '<span class="mut">Aucune référence : le portrait sera créé à partir de la description seule.</span>';
   options($('cr-depuis'), (E.fichiers.sources || []).map(x => [x.nom, 'Partir de l’avatar ' + tige(x.nom)]), 'Ou partir d’un avatar existant…');
-  const liste = E.taches.filter(t => t.type === 'portrait');
-  $('cr-resultats').innerHTML = liste.map(t => `<section class="encadre"><p class="mut" style="font-size:12px">${esc(t.params.prompt || '(sans description)')}${t.params.refs?.length ? ` · ${t.params.refs.length} réf.` : ''}</p>${['en attente', 'en cours'].includes(t.etat) ? `<div data-suivi-tache="${t.id}">${progressionHTML(t)}</div>` : t.etat === 'erreur' ? `<div class="tl-error">${esc(t.erreur || 'Échec')}</div>` : `<div style="display:flex;flex-wrap:wrap;gap:10px">${(t.resultat?.images || []).map(n => `<div style="width:180px"><img src="${f('portraits', n)}" style="width:180px;border-radius:8px"><button class="petit" onclick="utiliserPortrait('${js(n)}')">Utiliser comme avatar</button></div>`).join('')}</div>`}</section>`).join('');
+  const presents = new Set((E.fichiers.portraits || []).map(x => x.nom));
+  const liste = E.taches.filter(t => t.type === 'portrait' && (t.etat !== 'finie' || (t.resultat?.images || []).some(n => presents.has(n))));
+  $('cr-resultats').innerHTML = liste.map(t => `<section class="encadre"><p class="mut" style="font-size:12px">${esc(t.params.prompt || '(sans description)')}${t.params.refs?.length ? ` · ${t.params.refs.length} réf.` : ''}</p>${['en attente', 'en cours'].includes(t.etat) ? `<div data-suivi-tache="${t.id}">${progressionHTML(t)}</div>` : t.etat === 'erreur' ? `<div class="tl-error">${esc(t.erreur || 'Échec')}</div>` : `<div style="display:flex;flex-wrap:wrap;gap:10px">${(t.resultat?.images || []).filter(n => presents.has(n)).map(n => `<div style="width:180px"><img src="${f('portraits', n)}" style="width:180px;border-radius:8px"><div style="display:flex;gap:6px"><button class="petit" onclick="utiliserPortrait('${js(n)}')">Utiliser comme avatar</button><button class="sec petit" title="Supprimer ce portrait" onclick="supprimerPortrait('${js(n)}')">Supprimer</button></div></div>`).join('')}</div>`}</section>`).join('');
 }
 async function creerPortraits() {
   const prompt = $('cr-prompt').value.trim();
   if (!prompt && !CR_REFS.length) return alert('Décrivez la personne ou ajoutez une référence.');
   try { await api('/api/tache', {type:'portrait', params:{prompt, refs:CR_REFS, nombre:+$('cr-nombre').value}}); } catch(e) { return alert(e.message); }
   $('cr-msg').textContent = 'Ajouté à la file de calcul.'; await rafraichir(true);
+}
+async function supprimerPortrait(n) {
+  if (!confirm('Supprimer définitivement ce portrait ?')) return;
+  await api('/api/supprimer', {dossier:'portraits', nom:n}); await rafraichir(true);
 }
 async function utiliserPortrait(n) {
   const nom = prompt('Nom de cet avatar', 'avatar-' + n.split('-').pop().replace('.png', ''));
