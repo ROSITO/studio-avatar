@@ -69,6 +69,7 @@ def creer(d):
     avatar=d.get('avatar','')
     if '/' in avatar or not (S.ICI/'sources'/avatar).is_file(): raise ValueError('Photo introuvable')
     if d.get('audio') and ('/' in d['audio'] or not (S.ICI/'audios'/d['audio']).is_file()): raise ValueError('Audio introuvable')
+    if not d.get('audio') and not (d.get('voix') and d.get('texte','').strip()): raise ValueError('Écrivez un texte et choisissez une voix, ou importez un audio.')
     p=dict(id=ident(),nom=d.get('nom') or 'Nouveau projet',avatar=avatar,voix=d.get('voix'),langue=d.get('langue','fr'),audio_source=d.get('audio'),moteur=d.get('moteur') if d.get('moteur') in MOTEURS else 'a2v',blocs=[],transitions=[],revision=0,export=None,montage_version=montage.VERSION)
     # Une balise reconnue ouvre un bloc ; la ponctuation ne le découpe jamais.
     import re

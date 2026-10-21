@@ -86,6 +86,9 @@ class ProjetsTest(unittest.TestCase):
             with self.assertRaises(RuntimeError):projets.executer(t)
         t['etat']='erreur'; p=projets.lire(p['id']); self.assertTrue(p['blocs'][0]['audio']); self.assertFalse(p['blocs'][0]['clip'])
         projets.lancer(p['id'],dict(action='clip',element=b['id'])); self.drain(); self.assertEqual(self.voix_count,1)
+    def test_projet_vide_refuse(self):
+        for d in (dict(avatar='avatar.png'),dict(avatar='avatar.png',voix='test',texte='  '),dict(avatar='avatar.png',audio='',texte='Bonjour')):
+            with self.assertRaises(ValueError): projets.creer(d)
     def test_edition_deplacement_et_validation(self):
         p=self.creer(); pid=p['id']; b=p['blocs'][0]
         with self.assertRaises(ValueError):projets.modifier(pid,dict(action='modifier',element=b['id'],duree=-1))

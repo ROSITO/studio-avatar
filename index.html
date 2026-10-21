@@ -254,7 +254,7 @@ pre { background:#080c11; }
     <div class="encadre recap" id="recap"></div>
     <label>Nom du projet</label>
     <input id="nom" placeholder="ma-video">
-    <div class="navig"><button class="sec" onclick="aller(2)">Retour</button><button class="gros" onclick="generer()">Créer le projet</button></div>
+    <div class="navig"><button class="sec" onclick="aller(2)">Retour</button><button class="gros" id="btn-creer" onclick="generer()">Créer le projet</button></div>
   </div>
 </div>
 
@@ -453,6 +453,11 @@ function recap() {
   if (!$('nom').value) $('nom').value = tige(CH.avatar) + '-' + new Date().toISOString().slice(5, 16).replace(/\D/g, '');
 }
 async function generer() {
+  if ($('btn-creer').disabled) return;   // un 2e clic recréait un projet vide avec le formulaire déjà remis à zéro
+  $('btn-creer').disabled = true;
+  try { await creerProjet(); } finally { $('btn-creer').disabled = false; }
+}
+async function creerProjet() {
   const p = { avatar: CH.avatar, mode: CH.mode, nom: $('nom').value.trim() || 'video', estimation: Math.round(estimation().calcul) };   // calcul propre à la vidéo (hors attente)
   if (CH.source === 'texte') Object.assign(p, { texte: $('texte').value.trim(), voix: $('voix').value, langue: $('langue').value });
   else Object.assign(p, { audio: $('audio').value, texte: $('texte').value.trim() });
