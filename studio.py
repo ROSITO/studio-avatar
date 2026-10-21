@@ -27,7 +27,7 @@ for d in DOSSIERS: (ICI / d).mkdir(exist_ok=True)
 BASE_CLIP = ("A YouTuber seated and facing the camera, exactly the same person, clothes and setting as in the image, with calm, composed body language. "
              "Her mouth stays closed for the entire video: her lips remain pressed gently together, she does not speak and her lips do not move. "
              "She keeps her head upright and her face turned straight toward the camera the whole time (no head tilt, no turning away). "
-             "Her hands stay low, near her lap: only small, discreet hand movements, never raised above her chest, never near her face, no waving. "
+             "Her hands rest still on her lap the whole time: no hand gestures, her hands never move. "
              "Slow, soft, natural movements. Static camera, the background stays exactly the same.")
 BASE_PONT = ("A YouTuber seated and facing the camera, exactly the same person, clothes and setting as in the image. Her mouth stays closed, her lips remain gently together and do not move. "
              "She calmly and smoothly settles back into her starting position, exactly as in the image, looking straight into the camera. "
@@ -36,7 +36,7 @@ BASE_PONT = ("A YouTuber seated and facing the camera, exactly the same person, 
 BASE_PARLE = ("A YouTuber seated and facing the camera, exactly the same person, clothes and setting as in the image, "
               "talking naturally to the camera, her lips moving in sync with her speech. "
               "She keeps her head upright and her face turned straight toward the camera the whole time. "
-              "Her hands stay low, near her lap: only small, discreet hand movements. Static camera, the background stays exactly the same.")
+              "Her hands rest still on her lap the whole time: no hand gestures, her hands never move. Static camera, the background stays exactly the same.")
 
 # Portrait d'avatar : la pose dont a2v et MuseTalk ont besoin (de face, tête droite, bouche fermée, mains basses).
 BASE_PORTRAIT = ("Photorealistic portrait photo of one person seated and facing the camera, centered in a vertical frame, "
@@ -44,17 +44,15 @@ BASE_PORTRAIT = ("Photorealistic portrait photo of one person seated and facing 
                  "both hands resting low on the lap and visible, upper body and knees in frame, calm uncluttered background, soft natural light.")
 ROLES_REF = {'visage': 'the face, hair and skin tone of the person', 'tenue': 'the clothing', 'decor': 'the setting and background', 'style': 'the lighting and photographic style'}
 
-# Gestes validés (bouche fermée, gestes doux, 4 s, ancrés au début seulement).
+# Gestes : visage et tête seulement, mains immobiles (un geste de main se raccorde mal dans les ponts).
+# Ni bouche ni mains ici : la base du moteur (BASE_PARLE / BASE_CLIP) les fixe.
 GESTES = {
-    'hochement': 'She nods gently twice, her hands resting calmly where they are.',
-    'une-main': 'She makes a small, gentle explaining movement with one hand at lap level, nods softly once and gives a slight closed-mouth smile.',
-    'curieux': 'Looking straight into the camera with her head perfectly still and centered, she simply raises her eyebrows with an intrigued expression, her hands resting on her lap.',
-    'paumes-ouvertes': 'She gives a small soft shrug with a gentle closed-mouth smile, briefly turning her palms up on her lap, then rests her hands.',
+    'hochement': 'She nods gently twice with a calm, friendly look.',
+    'curieux': 'Looking straight into the camera with her head perfectly still and centered, she simply raises her eyebrows with an intrigued expression.',
+    'sourire': 'Her face lights up: bright, lively eyes, raised eyebrows and a warm smile, with one small energetic nod.',
     'reflexion': 'She looks thoughtful, briefly lowering her eyes as if thinking, then looks back into the camera with a slight smile.',
-    'mains-jointes': 'She calmly interlaces her fingers and rests her clasped hands loosely on her knees, with a thoughtful look and a slow small nod.',
-    'penchee': 'She leans slightly forward toward the camera with an attentive look, then gently sits back.',
-    'vers-la-camera': 'She raises her eyebrows softly, smiles warmly and nods once in acknowledgement, her hands resting on her lap.',
-    'meche': 'She calmly tucks a strand of hair behind her ear, then places her hand back where it was.',
+    'penchee': 'She leans slightly forward toward the camera with an attentive, serious look, then gently sits back.',
+    'vers-la-camera': 'She raises her eyebrows softly, smiles warmly and nods once in acknowledgement.',
 }
 # Clip « repos » : ancré au début ET à la fin (le mouvement reste minime) -> on peut le couper n'importe où,
 # il comble les silences et les fins de phrase sans saut.
@@ -63,14 +61,14 @@ REPOS = 'She stays still and relaxed, breathing calmly and blinking naturally, w
 # Situations : chacune correspond aux balises de ton de la voix ([curious], [excited]… comme ElevenLabs v4).
 # (clé, libellé, emoji, balises reconnues, gestes de la préparation)
 TONS = [
-    ('neutre', 'Neutre', '😐', ['neutral', 'neutre', 'calm', 'calme'], ['hochement', 'une-main']),
+    ('neutre', 'Neutre', '😐', ['neutral', 'neutre', 'calm', 'calme'], ['hochement']),
     ('curieux', 'Curieux', '🤔', ['curious', 'curieux', 'questioning', 'intrigued'], ['curieux']),
-    ('enthousiaste', 'Enthousiaste', '🤩', ['excited', 'enthousiaste', 'happy', 'enthusiastic', 'cheerful'], ['paumes-ouvertes']),
+    ('enthousiaste', 'Enthousiaste', '🤩', ['excited', 'enthousiaste', 'happy', 'enthusiastic', 'cheerful'], ['sourire']),
     ('reflechi', 'Réfléchi', '💭', ['thoughtful', 'reflechi', 'réfléchi', 'pensive', 'reflective'], ['reflexion']),
     ('serieux', 'Sérieux', '🧐', ['serious', 'serieux', 'sérieux', 'concerned', 'firm'], ['penchee']),
     ('chaleureux', 'Chaleureux', '😊', ['warm', 'chaleureux', 'friendly', 'kind', 'gentle'], ['vers-la-camera']),
 ]
-TON_DU_GESTE = {g: k for k, *_, gs in TONS for g in gs} | {'mains-jointes': 'reflechi'}   # « mèche » : main devant le menton, non utilisé
+TON_DU_GESTE = {g: k for k, *_, gs in TONS for g in gs} | {'une-main': 'neutre', 'paumes-ouvertes': 'enthousiaste', 'mains-jointes': 'reflechi'}   # anciens clips de bibliothèque (gestes de mains retirés)
 BALISES = {b: k for k, _, _, bs, _ in TONS for b in bs + [k]}
 
 TACHES, VERROU = [], threading.Lock()
@@ -457,7 +455,7 @@ class H(BaseHTTPRequestHandler):
         if u.path == '/api/etat':
             libs = {s.name: lib_avatar(s.name) for s in (ICI / 'sources').iterdir() if not s.name.startswith('.')}
             return self.json(dict(taches=TACHES[-60:][::-1], fichiers=fichiers(), t7=GESTION_MODELES.selection()['video']['installe'], base_clip=BASE_CLIP,
-                                  tons=[dict(cle=k, nom=n, emoji=e, balise=bs[0]) for k, n, e, bs, _ in TONS], balises=BALISES, libs=libs))
+                                  tons=[dict(cle=k, nom=n, emoji=e, balise=bs[0], geste=GESTES[gs[0]]) for k, n, e, bs, gs in TONS], balises=BALISES, libs=libs))
         if u.path == '/api/apercu': return self.json(apercus.etat(parse_qs(u.query).get('projet', [''])[0]))
         if u.path == '/api/modeles/voix': return self.json(GESTION_MODELES.voix_catalogue())
         if u.path == '/api/modeles': return self.json(GESTION_MODELES.catalogue())

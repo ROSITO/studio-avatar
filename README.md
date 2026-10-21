@@ -58,6 +58,11 @@ Requires OpenCV in `STUDIO_CV_PYTHON`.
 - Projects and individual outputs persist on disk. A failed LTX task retains
   completed audio; completed elements are reused after a restart.
 
+Gestures use the face and head only (nod, raised eyebrows, smile, lean, lowered
+eyes); hands rest still on the lap in every engine. Hand gestures such as open palms
+are excluded because the following transition must bring the hands back, which is
+the hardest case for a join.
+
 Recognized tags include `[neutral]`, `[curious]`, `[excited]`, `[thoughtful]`,
 `[serious]`, and `[warm]`, with aliases defined in `studio.py`. Unknown tags do not
 start a new block.

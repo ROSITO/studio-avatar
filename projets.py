@@ -201,7 +201,7 @@ def executer(t):
         n=S.images_ltx(math.ceil(x['duree']*24)); photo=[(S.ICI/'sources'/p['avatar'],0)]
         if moteur(p)=='a2v':
             voix=S.ICI/'audios'/f'{suffix}-a2v.wav'; segment(t,S.ICI/'audios'/x['audio'],0,n/24,voix)
-            prompt,extra=S.BASE_PARLE+' '+x['prompt'].replace('closed-mouth ',''),[voix]
+            prompt,extra=S.BASE_PARLE+' '+x['prompt'],[voix]
         else: prompt,extra=S.BASE_CLIP+' '+x['prompt'],[]
         # Option : un clip dont le visage bouge trop (tête penchée/tournée) est refait avec la seed suivante.
         essais=S.ESSAIS if p.get('controle_visage') else 1; meilleur=None; seed=x['seed']
