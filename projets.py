@@ -246,7 +246,7 @@ def executer(t):
                 # La voix du bloc gauche continue pendant le retour : le pont parle aussi.
                 voix=S.ICI/'audios'/f'{suffix}-a2v.wav'; extra=[voix]
                 segment(t,S.ICI/'audios'/a['audio'],retour['coupe']/montage.FPS,n/24,voix)
-                prompt='The same person keeps talking to the camera, her lips moving in sync with her speech, while she smoothly moves from the first pose to the final pose. '+prompt
+                prompt=prompt.replace('The same person smoothly moves','The same person keeps talking to the camera, her lips moving in sync with her speech, while she smoothly moves')
             # LTX ne rejoint pas toujours l’image d’arrivée (il la colle en dernière image) : on mesure le raccord monté
             # et on relance avec la seed suivante, jusqu’à 3 essais ; le meilleur est gardé.
             meilleur=None
