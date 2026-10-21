@@ -13,7 +13,7 @@ class ProjetsTest(unittest.TestCase):
         self.patches=[patch.object(projets.montage,'analyser',self.analyser),patch.object(studio,'ICI',root),patch.object(studio,'TACHES',[]),patch.object(studio,'sauver',lambda:None),patch.object(studio,'resolution',lambda p:(64,64)),patch.object(studio,'apercu',lambda p:None),patch.object(studio,'ltx',self.ltx),patch.object(studio,'voix',self.voix),patch.object(studio,'musetalk',self.muse)]
         for p in self.patches:p.start()
         for d in studio.DOSSIERS+['taches']:(root/d).mkdir()
-        projets.installer(studio); self.root=root; self.generations=[]; self.voix_count=0; self.audios_a2v=[]; self.muse_count=0
+        projets.installer(studio); self.root=root; self.generations=[]; self.voix_count=0; self.audios_a2v=[]; self.muse_count=0; self.voix_seeds=[]
         (root/'sources'/'avatar.png').write_bytes(b'photo test')
     def analyser(self,studio,t,p,tr):
         total=projets.montage.frames_blocs(p)[tr['gauche']]
@@ -26,8 +26,8 @@ class ProjetsTest(unittest.TestCase):
         self.generations.append((out.name,images,frames,seed))
         if audio: self.audios_a2v.append((studio.duree(audio),frames/24))
         self.ff(['-f','lavfi','-i','color=c=blue:s=64x64:r=24','-frames:v',frames,'-c:v','libx264','-pix_fmt','yuv420p',out])
-    def voix(self,t,texte,profil,langue,out):
-        self.voix_count+=1
+    def voix(self,t,texte,profil,langue,out,seed=42):
+        self.voix_count+=1; self.voix_seeds.append(seed)
         self.ff(['-f','lavfi','-i','sine=frequency=440:sample_rate=44100','-t','1.25',out])
     def muse(self,t,video,audio,out,shift):
         self.muse_count+=1
@@ -93,7 +93,7 @@ class ProjetsTest(unittest.TestCase):
         p=projets.modifier(p['id'],dict(action='refaire_voix',element=b['id']))
         self.assertIsNone(p['blocs'][1]['audio']); self.assertFalse(projets.courant(p['blocs'][1]))
         projets.lancer(p['id'],dict(action='clip',element=b['id'])); self.drain(); p=projets.lire(p['id'])
-        self.assertEqual(self.voix_count,2); self.assertNotEqual(p['blocs'][1]['audio'],ancien); self.assertEqual(p['blocs'][1]['texte'],b['texte'])
+        self.assertEqual(self.voix_count,2); self.assertNotEqual(p['blocs'][1]['audio'],ancien); self.assertNotEqual(self.voix_seeds[0],self.voix_seeds[1]); self.assertEqual(p['blocs'][1]['texte'],b['texte'])
     def test_projet_vide_refuse(self):
         for d in (dict(avatar='avatar.png'),dict(avatar='avatar.png',voix='test',texte='  '),dict(avatar='avatar.png',audio='',texte='Bonjour')):
             with self.assertRaises(ValueError): projets.creer(d)

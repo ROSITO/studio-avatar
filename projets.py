@@ -115,7 +115,7 @@ def modifier(pid,d):
             elif action=='refaire_voix':   # nouvelle prise VoiceStudio sans toucher au texte (une relance de clip garde l’audio)
                 if x not in p['blocs']: raise ValueError('Seuls les blocs ont une voix.')
                 if p['audio_source']: raise ValueError('La voix vient de l’audio importé : rien à refaire.')
-                x['audio']=None; x['revision']+=1
+                x['audio']=None; x['voix_seed']=seed_aleatoire(); x['revision']+=1
             elif action=='deplacer':
                 i=p['blocs'].index(x); j=i+int(d.get('sens',0))
                 if 0<=j<len(p['blocs']): p['blocs'][i],p['blocs'][j]=p['blocs'][j],p['blocs'][i]
@@ -198,7 +198,7 @@ def executer(t):
                 S.lancer(t,['ffmpeg','-v','error','-y','-ss',x['audio_debut'],'-i',S.ICI/'audios'/p['audio_source'],'-t',x['audio_duree'],'-ar','44100','-ac','1',audio])
             else:
                 if not x['texte'].strip() or not p['voix']: raise ValueError('Texte et voix nécessaires pour ce bloc.')
-                S.voix(t,x['texte'],p['voix'],p['langue'],audio)
+                S.voix(t,x['texte'],p['voix'],p['langue'],audio,x.get('voix_seed',42))   # seed fixe = même prise ; « Refaire la voix » en tire une autre
             x['audio']=audio.name; x['duree']=max(.5,S.duree(audio))
             with VERROU: sauver(p)  # checkpoint conservé si LTX échoue
         W,H=S.resolution(S.ICI/'sources'/p['avatar']); out=S.ICI/'clips'/f'{suffix}.mp4'

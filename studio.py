@@ -408,10 +408,10 @@ def musetalk(t, video, audio, out, shift):
                     '-c:a', 'aac', '-b:a', '192k', '-shortest', '-movflags', '+faststart', out], check=True)
     brut.unlink(missing_ok=True); apercu(out)
 
-def voix(t, texte, profil, langue, out):
+def voix(t, texte, profil, langue, out, seed=42):
     """Synthèse locale par VoiceStudio (réglages de Codex : sans fondu ni post-traitement, qui avalaient les débuts de mots)."""
     import urllib.request, urllib.parse
-    champs = dict(text=texte, language=langue, profile_id=profil, seed='42', guidance_scale='2', effect_preset='raw',
+    champs = dict(text=texte, language=langue, profile_id=profil, seed=str(seed), guidance_scale='2', effect_preset='raw',
                   wav_bits='24', postprocess_output='false', crossfade_ms='0')
     engine = (t.get('modeles') or GESTION_MODELES.selection()).get('voix', {}).get('id')
     if engine: champs['engine'] = engine
