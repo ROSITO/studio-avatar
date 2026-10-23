@@ -314,3 +314,18 @@ the local generation workflow possible.
 ### Raccords adaptés aux poses
 
 Les raccords analysent des miniatures du corps dans la fin du rush et les comparent à la première image du suivant. Ce score visuel est une approximation, pas une détection du squelette. Le point de coupe et la durée sont choisis ensemble pour réduire le déplacement et éviter une coupure pendant un geste rapide. La durée saisie est une préférence ; la durée retenue peut atteindre 1,3 seconde. Une coupe directe évite LTX si les images sont presque identiques. Les retours LTX utilisent leur cadence native de 24 images/s, sans compression temporelle. La voix reste continue et la durée totale ne change pas. Les anciens raccords sont à régénérer ; les rushs sont conservés.
+
+### Preserve voice identity when migrating
+
+An audio reference alone does not preserve the sound of a voice when switching
+TTS models. Imported profiles record their original engine. Synthesis rejects a
+mismatched selected engine instead of silently producing a different voice.
+For original OmniVoice profiles, install the independent upstream runtime with
+`python3.12 installer_voix.py --moteur omnivoice`, then select **OmniVoice**.
+Existing complete `k2-fsa/OmniVoice` snapshots under the configured external
+Hugging Face cache are reused without copying/downloading their weights. The
+adapter uses MPS on Apple Silicon, 16 diffusion steps, guidance 2, and raw output.
+It imports upstream `omnivoice`, never VoiceStudio's package or HTTP synthesis API.
+OmniVoice code is Apache 2.0; its model weights are CC-BY-NC. See the
+[upstream model card](https://huggingface.co/k2-fsa/OmniVoice). A listening comparison
+is still needed; using the same model does not guarantee bit-identical takes.

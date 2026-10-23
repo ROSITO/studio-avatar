@@ -29,6 +29,11 @@ CATALOGUE += [dict(id=mid,nom=nom,role='synthese',ram=ram,description=descriptio
        'Port communautaire Apple Silicon · environ 24 Go de poids, mémoire élevée · licence Fish Audio Community. À tester avant les vidéos longues.',
        ['config.json','codec.safetensors','tokenizer.json']+['model-%05d.safetensors'%i for i in range(1,7)])]]
 
+CATALOGUE += [dict(id='omnivoice',nom='OmniVoice · moteur original des voix importées',role='synthese',ram=8,
+    description='Clonage vocal PyTorch · MPS sur Mac · code Apache 2.0, poids CC-BY-NC (non commerciaux).',
+    required=['config.json','model.safetensors','tokenizer.json','audio_tokenizer/config.json','audio_tokenizer/model.safetensors','audio_tokenizer/preprocessor_config.json'],
+    sources=[dict(repo='k2-fsa/OmniVoice',include=['*.json','*.safetensors','*.jinja','LICENSE*'],prefix='')])]
+
 class SansFuiteToken(urllib.request.HTTPRedirectHandler):
     def redirect_request(self,req,fp,code,msg,headers,newurl):
         redirected=super().redirect_request(req,fp,code,msg,headers,newurl)
@@ -93,6 +98,10 @@ class Gestionnaire:
         if e.get('detecter') and getattr(self.s,'MODELES_IMAGE',None):
             ancien=self.s.MODELES_IMAGE/e['detecter']
             if self.valid(e,ancien):return ancien
+        if e['id']=='omnivoice':
+            cache=self.s.MODELES/'huggingface'/'hub'/'models--k2-fsa--OmniVoice'/'snapshots'
+            for p in sorted(cache.glob('*')):
+                if self.valid(e,p):return p
         if e['id']=='gemma3':
             cache=self.s.MODELES/'huggingface'/'hub'/'models--mlx-community--gemma-3-12b-it-4bit'/'snapshots'
             for p in sorted(cache.glob('*')):

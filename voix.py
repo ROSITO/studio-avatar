@@ -10,7 +10,7 @@ import urllib.request
 import urllib.parse
 import uuid
 
-ENGINES = ('qwen3-tts-mlx', 'drama3-mlx')
+ENGINES = ('omnivoice', 'qwen3-tts-mlx', 'drama3-mlx')
 
 class Atelier:
     def __init__(self, studio):
@@ -18,6 +18,9 @@ class Atelier:
         self.root=studio.ICI/'voix';self.root.mkdir(exist_ok=True)
         self.path=self.root/'profils.json'
         self.python=Path(os.environ.get('STUDIO_TTS_PYTHON',str(studio.ICI/'.venv-voix'/('Scripts/python.exe' if os.name=='nt' else 'bin/python')))).expanduser()
+    def interpreteur(self,mid):
+        if mid!='omnivoice':return self.python
+        return Path(os.environ.get('STUDIO_OMNIVOICE_PYTHON',str(self.s.ICI/'.venv-omnivoice'/('Scripts/python.exe' if os.name=='nt' else 'bin/python')))).expanduser()
     def lire(self):
         try:return json.loads(self.path.read_text())
         except FileNotFoundError:return []
@@ -29,8 +32,9 @@ class Atelier:
         engines=[]
         for mid in ENGINES:
             e=g.entry(mid);p=g.path(e);present=g.valid(e,p)
-            engines.append(dict(id=mid,display_name=e['nom'],available=compatible and self.python.is_file() and present,
-                reason='' if compatible and self.python.is_file() and present else 'Apple Silicon requis' if not compatible else 'Installez le moteur Python (.venv-voix)' if not self.python.is_file() else 'Téléchargez les poids dans Modèles',supports_cloning=True,supports_voice_design=False))
+            support=compatible or mid=='omnivoice';runtime=self.interpreteur(mid).is_file()
+            engines.append(dict(id=mid,display_name=e['nom'],available=support and runtime and present,
+                reason='' if support and runtime and present else 'Apple Silicon requis' if not support else 'Installez le runtime '+('.venv-omnivoice' if mid=='omnivoice' else '.venv-voix') if not runtime else 'Téléchargez les poids dans Modèles',supports_cloning=True,supports_voice_design=False))
         return dict(ok=True,actif=moteur,engines=engines)
     def liste(self):
         c=self.catalogue();pret=next(e['available'] for e in c['engines'] if e['id']==c['actif'])
@@ -52,6 +56,7 @@ class Atelier:
             p=dict(id=pid,nom=nom,texte=texte,reference=ref,langue=d.get('langue','fr'),duree=duree)
             ancien=next((x for x in profils if x['id']==pid),{})
             if ancien.get('ancien_id'):p['ancien_id']=ancien['ancien_id']
+            p['moteur_origine']=ancien.get('moteur_origine') or self.s.GESTION_MODELES.config['selection'].get('synthese','qwen3-tts-mlx')
             self.sauver([x for x in profils if x['id']!=pid]+[p]);return p
     def supprimer(self,pid):
         with self.lock:
@@ -60,9 +65,15 @@ class Atelier:
     def importer_ancien(self):
         # Action explicite, une copie des références ; aucune dépendance ensuite.
         with urllib.request.urlopen(self.s.VOICESTUDIO+'/profiles',timeout=5) as r:anciens=json.load(r)
+        with urllib.request.urlopen(self.s.VOICESTUDIO+'/engines/tts',timeout=5) as r:moteur=json.load(r).get('active')
         ajoutes=0
         for a in anciens:
-            if any(p.get('ancien_id')==a['id'] for p in self.lire()):continue
+            with self.lock:
+                profils=self.lire();existant=next((p for p in profils if p.get('ancien_id')==a['id']),None)
+                if existant:
+                    if moteur in ENGINES and not existant.get('moteur_origine'):
+                        existant['moteur_origine']=moteur;self.sauver(profils)
+                    continue
             if not a.get('ref_text'):continue
             ref='voix-'+uuid.uuid4().hex[:12]+'.wav';dest=self.s.ICI/'references'/ref
             # VoiceStudio expose souvent un nom relatif : passer par son export audio.
@@ -71,7 +82,9 @@ class Atelier:
             try:p=self.enregistrer(dict(nom=a.get('name',a['id']),texte=a['ref_text'],reference=ref,langue={'French':'fr','English':'en','Spanish':'es','German':'de','Italian':'it','Portuguese':'pt'}.get(a.get('language'),a.get('language') or 'fr')))
             except Exception:dest.unlink(missing_ok=True);raise
             with self.lock:
-                profils=self.lire();next(x for x in profils if x['id']==p['id'])['ancien_id']=a['id'];self.sauver(profils)
+                profils=self.lire();profil=next(x for x in profils if x['id']==p['id']);profil['ancien_id']=a['id']
+                if moteur in ENGINES:profil['moteur_origine']=moteur
+                self.sauver(profils)
             ajoutes+=1
         return dict(ajoutes=ajoutes)
     def generer(self,t,texte,pid,langue,out,seed=42):
@@ -79,13 +92,16 @@ class Atelier:
         choix=(t.get('modeles') or g.selection()).get('synthese')
         if not choix:raise ValueError('Choisissez un modèle de synthèse dans Modèles.')
         if choix['id'] not in ENGINES or not choix['installe']:raise ValueError('Installez les poids du moteur de voix dans Modèles.')
-        if not self.python.is_file():raise ValueError('Installez le moteur avec installer_voix.py.')
+        origine=profil.get('moteur_origine')
+        if origine and choix['id']!=origine:raise ValueError('Cette voix utilise '+origine+'. Sélectionnez ce moteur dans Mes voix ; changer de moteur modifie le timbre.')
+        python=self.interpreteur(choix['id'])
+        if not python.is_file():raise ValueError('Installez le moteur avec installer_voix.py.')
         if not texte.strip():raise ValueError('Texte vide.')
         req=self.root/(t['id']+'-requete.json');brut=self.root/(t['id']+'-brut.wav');tmp=out.with_suffix('.tmp.wav')
         req.write_text(json.dumps(dict(texte=texte,moteur=choix['id'],modele=choix['path'],reference=str(self.s.ICI/'references'/profil['reference']),transcription=profil['texte'],langue=langue,seed=int(seed),sortie=str(brut)),ensure_ascii=False))
         try:
             t['etape']='Synthèse vocale locale · '+g.entry(choix['id'])['nom'];self.s.sauver()
-            self.s.lancer(t,[self.python,'-u',self.s.ICI/'lancer_voix.py',req],env={'HF_HUB_OFFLINE':'1','TRANSFORMERS_OFFLINE':'1','HF_HOME':str(self.s.MODELES/'huggingface')})
+            self.s.lancer(t,[python,'-u',self.s.ICI/('lancer_omnivoice.py' if choix['id']=='omnivoice' else 'lancer_voix.py'),req],env={'HF_HUB_OFFLINE':'1','TRANSFORMERS_OFFLINE':'1','HF_HOME':str(self.s.MODELES/'huggingface')})
             if not brut.is_file() or brut.stat().st_size<44:raise RuntimeError('Le moteur vocal n’a produit aucun audio. Consultez le journal.')
             self.s.lancer(t,['ffmpeg','-v','error','-y','-i',brut,'-ac','1','-ar','44100','-c:a','pcm_s24le',tmp])
             if t.get('annuler'):raise RuntimeError('Tâche annulée')

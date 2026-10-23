@@ -22,7 +22,7 @@ jobs:
       - name: Install FFmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - name: Compile Python
-        run: python -m py_compile studio.py projets.py modeles.py apercus.py montage.py lancer_musetalk15.py visage.py voix.py lancer_voix.py installer_voix.py
+        run: python -m py_compile studio.py projets.py modeles.py apercus.py montage.py lancer_musetalk15.py visage.py voix.py lancer_voix.py installer_voix.py lancer_omnivoice.py
       - name: Test persistent timeline and media assembly
         run: python -m unittest discover -p 'test_*.py' -v
       - name: Validate browser script syntax
