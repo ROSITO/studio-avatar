@@ -21,6 +21,24 @@ def vue_modele(source, parent):
                 if not nom.startswith('.'):(dest/nom).symlink_to((Path(dossier)/nom).resolve())
         yield vue
 
+def limite_drama(texte):
+    # About 22 audio frames/s, allowing slower delivery and nonverbal cues.
+    from balises import parle
+    return 1024 if len(parle(texte))>120 else 256
+
+def generer_flux(modele,d,out):
+    """Decode causally without the CLI helper's forced audio playback."""
+    import numpy as np
+    from mlx_audio.audio_io import write
+    morceaux=[];total=0
+    for resultat in modele.generate(text=d['texte'],ref_audio=d['reference'],ref_text=d['transcription'],
+            stream=True,streaming_interval=1.0,max_tokens=limite_drama(d['texte'])):
+        morceau=np.array(resultat.audio)
+        morceaux.append(morceau);total+=len(morceau)
+        print(f'Audio décodé : {total/modele.sample_rate:.2f} s',flush=True)
+    if not morceaux:raise RuntimeError('Aucun audio généré')
+    write(str(out),np.concatenate(morceaux),modele.sample_rate,format='wav')
+
 def main():
     def interrompre(signum, frame):raise SystemExit('Synthèse interrompue')
     signal.signal(signal.SIGTERM,interrompre)
@@ -78,8 +96,11 @@ def main():
         print('Génération de la prise',flush=True)
         lang={'fr':'French','en':'English','es':'Spanish','de':'German','it':'Italian','pt':'Portuguese','zh':'Chinese','ja':'Japanese','ko':'Korean'}.get(d['langue'],d['langue'])
         out=Path(d['sortie'])
-        generate_audio(model=modele,text=d['texte'],ref_audio=d['reference'],ref_text=d['transcription'],lang_code=lang,
-            output_path=str(out.parent),file_prefix=out.stem,audio_format='wav',join_audio=True,play=False,stream=False,max_tokens=256 if d['moteur']=='drama3-mlx' else 4096,verbose=True)
+        flux=d['moteur']=='drama3-mlx' and limite_drama(d['texte'])>256
+        if flux:generer_flux(modele,d,out)
+        else:
+            generate_audio(model=modele,text=d['texte'],ref_audio=d['reference'],ref_text=d['transcription'],lang_code=lang,
+                output_path=str(out.parent),file_prefix=out.stem,audio_format='wav',join_audio=True,play=False,stream=False,max_tokens=limite_drama(d['texte']) if d['moteur']=='drama3-mlx' else 4096,verbose=True)
         if not out.is_file() or out.stat().st_size<44:raise RuntimeError('La synthèse a échoué : aucune prise produite.')
     print('Prise terminée',flush=True)
 

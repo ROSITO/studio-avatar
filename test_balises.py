@@ -13,3 +13,11 @@ class BalisesTest(unittest.TestCase):
         texte='[curious] [voice:curious] Bonjour [laughs].'
         self.assertEqual(balises.pour_voix(texte,'drama3-mlx',{'curious':'curieux'}),'[curious] Bonjour [laughs].')
         self.assertEqual(balises.pour_voix(texte,'omnivoice',{'curious':'curieux'}),'Bonjour .')
+
+    def test_budget_audio_adapte_au_texte_long(self):
+        from lancer_voix import limite_drama
+        self.assertEqual(limite_drama('[sighs] Bonjour.'),256)
+        self.assertEqual(limite_drama('a'*120),256)
+        self.assertGreater(limite_drama('a'*121),256)
+        self.assertEqual(limite_drama('a'*2000),1024)
+        self.assertEqual(limite_drama('[laughs] '*100+'Bonjour.'),256)

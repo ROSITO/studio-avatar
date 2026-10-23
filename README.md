@@ -362,8 +362,10 @@ CPU for lazy model loading, then stages only routed experts directly from
 safetensors on the model disk into temporary GPU buffers. Source mappings are closed
 after each staging copy. The codec and dense operations run on Metal;
 expert banks are never eagerly loaded as a whole. Prefill uses 64-frame batches.
-This trades disk bandwidth for a smaller working set. Its short
-trial is capped at 256 generated tokens. No production app is closed to make room.
+This trades disk bandwidth for a smaller working set. The audio
+frame budget is 256 frames for short takes and 1024 for longer text. Longer
+takes use the causal audio decoder in one-second chunks to avoid a large
+end-of-take allocation. The same memory watchdogs remain active. No production app is closed to make room.
 
 ### Drama voice directions
 
