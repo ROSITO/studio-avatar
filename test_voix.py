@@ -69,6 +69,23 @@ class VoixIntegreesTest(unittest.TestCase):
         t=dict(id='abcdef123456',modeles=dict(synthese=dict(id='qwen3-tts-mlx',path='local',installe=True)))
         with self.assertRaisesRegex(ValueError,'Cette voix utilise omnivoice'):
             self.atelier.generer(t,'Essai',self.profil['id'],'fr',studio.ICI/'audios'/'refuse.wav')
+    def test_balises_transmises_uniquement_a_drama(self):
+        python=self.fixture.root/'python';python.touch();self.atelier.python=python
+        profils=self.atelier.lire();profils[0].pop('moteur_origine',None);self.atelier.sauver(profils)
+        texte='[curious] Bonjour. [laughs] On recommence !'
+        for moteur,attendu in [('drama3-mlx','Bonjour. [laughs] On recommence !'),('qwen3-tts-mlx','Bonjour. On recommence !')]:
+            with self.subTest(moteur=moteur):
+                t=dict(id='abcdef123456',modeles=dict(synthese=dict(id=moteur,path='local',installe=True)))
+                out=studio.ICI/'audios'/(moteur+'.wav')
+                def lancer(t,cmd,env=None):
+                    if cmd[0]==python:
+                        d=json.loads(Path(cmd[-1]).read_text());self.assertEqual(d['texte'],attendu)
+                        subprocess.run(['ffmpeg','-v','error','-y','-i',studio.ICI/'references'/'ref.wav',d['sortie']],check=True)
+                    else:subprocess.run(list(map(str,cmd)),check=True)
+                with patch.object(studio,'lancer',side_effect=lancer):
+                    self.atelier.generer(t,texte,self.profil['id'],'fr',out)
+                meta=json.loads(out.with_suffix('.json').read_text())
+                self.assertEqual(meta['texte'],texte);self.assertEqual(meta['texte_synthese'],attendu)
     def test_echec_ne_remplace_pas_une_prise_existante(self):
         self.atelier.python=self.fixture.root/'python';self.atelier.python.touch()
         t=dict(id='abcdef123456',modeles=dict(synthese=dict(id='qwen3-tts-mlx',path='local',installe=True)))

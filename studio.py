@@ -2,6 +2,7 @@
 """Studio avatar : clips LTX-2.3 (local), ponts de retour à la pose, séquence continue, lipsync MuseTalk 1.5.
 Serveur local sans dépendance (Python ≥ 3.10) + une page web. Lancer : python3 studio.py  → http://localhost:8765
 Une seule tâche GPU à la fois (file d'attente)."""
+import balises
 import functools, json, math, os, re, secrets, shutil, subprocess, threading, time, uuid
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
@@ -209,8 +210,8 @@ def faire(t):
         nom = nom_sur(p['nom']); segs = segments(p.get('texte', '')); t['etape'] = 'Création de la voix'
         if p.get('audio'):
             audio = p['audio']; total = duree(ICI / 'audios' / audio)
-            n = sum(len(x['texte']) for x in segs) or 1; d0 = 0.0
-            for x in segs: x['debut'] = round(d0, 3); d0 += total * len(x['texte']) / n   # alignement approché au nombre de caractères
+            n = sum(len(balises.parle(x['texte'])) for x in segs) or 1; d0 = 0.0
+            for x in segs: x['debut'] = round(d0, 3); d0 += total * len(balises.parle(x['texte'])) / n   # alignement approché au nombre de caractères
         else:
             audio = f'{nom}.wav'; voix_segments(t, segs, p['voix'], p.get('langue', 'fr'), ICI / 'audios' / audio)
             total = duree(ICI / 'audios' / audio)
@@ -302,14 +303,7 @@ def sur_mesure(t, src, segs, total, seq):
 SUITE = 'She continues naturally in the same mood, with small calm movements.'
 
 def segments(texte):
-    """« [curious] Et si… [excited] C'est… » -> [{ton, texte}]. Balise inconnue (ex. [laughs]) : le ton ne change pas."""
-    out, ton = [], 'neutre'
-    for morceau in re.split(r'(\[[^\]]+\])', texte or ''):
-        b = re.fullmatch(r'\[([^\]]+)\]', morceau.strip())
-        if b: ton = BALISES.get(b[1].strip().lower(), ton); continue
-        txt = ' '.join(morceau.split())
-        if txt: out.append(dict(ton=ton, texte=txt))
-    return out or [dict(ton='neutre', texte='')]
+    return balises.blocs(texte,BALISES) or [dict(ton='neutre',texte='')]
 
 def voix_segments(t, segs, profil, langue, out):
     """Une synthèse VoiceStudio par segment : on connaît ainsi le début exact de chaque situation."""
@@ -458,7 +452,7 @@ class H(BaseHTTPRequestHandler):
         if u.path == '/api/etat':
             libs = {s.name: lib_avatar(s.name) for s in (ICI / 'sources').iterdir() if not s.name.startswith('.')}
             return self.json(dict(taches=TACHES[-60:][::-1], fichiers=fichiers(), t7=GESTION_MODELES.selection()['video']['installe'], base_clip=BASE_CLIP,
-                                  tons=[dict(cle=k, nom=n, emoji=e, balise=bs[0], geste=GESTES[gs[0]]) for k, n, e, bs, gs in TONS], balises=BALISES, libs=libs))
+                                  tons=[dict(cle=k, nom=n, emoji=e, balise=bs[0], geste=GESTES[gs[0]]) for k, n, e, bs, gs in TONS], balises=BALISES, balises_vocales=balises.VOCALES, libs=libs))
         if u.path == '/api/apercu': return self.json(apercus.etat(parse_qs(u.query).get('projet', [''])[0]))
         if u.path == '/api/modeles/voix': return self.json(GESTION_MODELES.voix_catalogue())
         if u.path == '/api/modeles': return self.json(GESTION_MODELES.catalogue())

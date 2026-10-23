@@ -1,6 +1,7 @@
 """Projets persistants : blocs TAG et transitions LTX indépendants."""
 import json, math, secrets, threading, time, uuid
 import montage
+import balises
 from pathlib import Path
 
 
@@ -48,7 +49,7 @@ def segment(t,src,debut,duree,out):
 
 def bloc(ton='neutre', texte=''):
     cle = next(gs[0] for k, *_, gs in S.TONS if k == ton)
-    return dict(id=ident(), ton=ton, texte=texte, prompt=S.GESTES[cle], duree=max(1.4, len(texte)/CARACTERES_SECONDE), seed=seed_aleatoire(), seed_mode='auto', revision=0, clip=None, audio=None)
+    return dict(id=ident(), ton=ton, texte=texte, prompt=S.GESTES[cle], duree=max(1.4, len(balises.parle(texte))/CARACTERES_SECONDE), seed=seed_aleatoire(), seed_mode='auto', revision=0, clip=None, audio=None)
 def relier(p):
     anciens = {(x['gauche'],x['droite']):x for x in p.get('transitions',[])}
     p['transitions'] = [anciens.get((a['id'],b['id'])) or dict(id=ident(),gauche=a['id'],droite=b['id'],duree=0.5,seed=seed_aleatoire(),seed_mode='auto',revision=0,clip=None) for a,b in zip(p['blocs'],p['blocs'][1:])]
@@ -62,7 +63,7 @@ def decouper(texte):
     import re
     morceaux=[]
     for phrase in re.split(r'(?<=[.!?…])\s+',texte):
-        if morceaux and len(morceaux[-1])+1+len(phrase)<=BLOC_MAX*CARACTERES_SECONDE: morceaux[-1]+=' '+phrase
+        if morceaux and len(balises.parle(morceaux[-1]))+1+len(balises.parle(phrase))<=BLOC_MAX*CARACTERES_SECONDE: morceaux[-1]+=' '+phrase
         else: morceaux.append(phrase)
     return morceaux
 def creer(d):
@@ -71,22 +72,13 @@ def creer(d):
     if d.get('audio') and ('/' in d['audio'] or not (S.ICI/'audios'/d['audio']).is_file()): raise ValueError('Audio introuvable')
     if not d.get('audio') and not (d.get('voix') and d.get('texte','').strip()): raise ValueError('Écrivez un texte et choisissez une voix, ou importez un audio.')
     p=dict(id=ident(),nom=d.get('nom') or 'Nouveau projet',avatar=avatar,voix=d.get('voix'),langue=d.get('langue','fr'),audio_source=d.get('audio'),moteur=d.get('moteur') if d.get('moteur') in MOTEURS else 'a2v',blocs=[],transitions=[],revision=0,export=None,montage_version=montage.VERSION)
-    # Une balise reconnue ouvre un bloc ; la ponctuation ne le découpe jamais.
-    import re
-    ton='neutre'; texte=''
-    for morceau in re.split(r'(\[[^\]]+\])',d.get('texte','')):
-        tag=re.fullmatch(r'\[([^\]]+)\]',morceau.strip())
-        nouveau=S.BALISES.get(tag[1].strip().lower()) if tag else None
-        if nouveau:
-            if texte.strip(): p['blocs']+=[bloc(ton,m) for m in decouper(' '.join(texte.split()))]
-            ton=nouveau; texte=''
-        elif not tag: texte+=morceau
-    if texte.strip(): p['blocs']+=[bloc(ton,m) for m in decouper(' '.join(texte.split()))]
+    for segment in balises.blocs(d.get('texte',''),S.BALISES):
+        p['blocs'] += [bloc(segment['ton'],m) for m in decouper(segment['texte'])]
     if not p['blocs']: p['blocs']=[bloc()]
     if p['audio_source']:
-        total=S.duree(S.ICI/'audios'/p['audio_source']); n=sum(len(b['texte']) for b in p['blocs']) or 1; debut=0
+        total=S.duree(S.ICI/'audios'/p['audio_source']); n=sum(max(1,len(balises.parle(b['texte']))) for b in p['blocs']) or 1; debut=0
         for b in p['blocs']:
-            b['audio_debut']=debut; b['duree']=total*len(b['texte'])/n if b['texte'] else total/len(p['blocs']); b['audio_duree']=b['duree']; debut+=b['duree']
+            b['audio_debut']=debut; b['duree']=total*max(1,len(balises.parle(b['texte'])))/n; b['audio_duree']=b['duree']; debut+=b['duree']
     relier(p)
     with VERROU: sauver(p)
     return p

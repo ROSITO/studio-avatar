@@ -1,5 +1,6 @@
 """Profils vocaux et synthèse locale. Aucune dépendance au serveur VoiceStudio."""
 import memoire
+import balises
 import json
 import os
 from pathlib import Path
@@ -38,7 +39,7 @@ class Atelier:
                 memoire.verifier(mid);memoire_ok=True;raison_memoire=''
             except ValueError as exc:memoire_ok=False;raison_memoire=str(exc)
             engines.append(dict(id=mid,display_name=e['nom'],available=support and runtime and present and memoire_ok,
-                reason=raison_memoire if not memoire_ok else '' if support and runtime and present else 'Apple Silicon requis' if not support else 'Installez le runtime '+('.venv-omnivoice' if mid=='omnivoice' else '.venv-voix') if not runtime else 'Téléchargez les poids dans Modèles',supports_cloning=True,supports_voice_design=False))
+                reason=raison_memoire if not memoire_ok else '' if support and runtime and present else 'Apple Silicon requis' if not support else 'Installez le runtime '+('.venv-omnivoice' if mid=='omnivoice' else '.venv-voix') if not runtime else 'Téléchargez les poids dans Modèles',supports_cloning=True,supports_voice_design=False,supports_inline_tags=mid=='drama3-mlx'))
         return dict(ok=True,actif=moteur,engines=engines)
     def liste(self):
         c=self.catalogue();pret=next(e['available'] for e in c['engines'] if e['id']==c['actif'])
@@ -101,7 +102,9 @@ class Atelier:
         if origine and choix['id']!=origine:raise ValueError('Cette voix utilise '+origine+'. Sélectionnez ce moteur dans Mes voix ; changer de moteur modifie le timbre.')
         python=self.interpreteur(choix['id'])
         if not python.is_file():raise ValueError('Installez le moteur avec installer_voix.py.')
-        if not texte.strip():raise ValueError('Texte vide.')
+        texte_original=texte
+        texte=balises.pour_voix(texte,choix['id'],self.s.BALISES)
+        if not texte.strip():raise ValueError('Texte vide après retrait des balises non prises en charge.')
         t['memoire']=dict(budget_octets=plafond,reserve_systeme_octets=4*memoire.GIB,mode='essai_borne' if choix['id']=='drama3-mlx' else 'standard')
         req=self.root/(t['id']+'-requete.json');brut=self.root/(t['id']+'-brut.wav');tmp=out.with_suffix('.tmp.wav')
         req.write_text(json.dumps(dict(texte=texte,moteur=choix['id'],modele=choix['path'],reference=str(self.s.ICI/'references'/profil['reference']),transcription=profil['texte'],langue=langue,seed=int(seed),sortie=str(brut)),ensure_ascii=False))
@@ -112,7 +115,7 @@ class Atelier:
             self.s.lancer(t,['ffmpeg','-v','error','-y','-i',brut,'-ac','1','-ar','44100','-c:a','pcm_s24le',tmp])
             if t.get('annuler'):raise RuntimeError('Tâche annulée')
             tmp.replace(out)
-            out.with_suffix('.json').write_text(json.dumps(dict(synthetique=True,moteur=choix['id'],profil=profil['id'],texte=texte,seed=seed),ensure_ascii=False))
+            out.with_suffix('.json').write_text(json.dumps(dict(synthetique=True,moteur=choix['id'],profil=profil['id'],texte=texte_original,texte_synthese=texte,seed=seed),ensure_ascii=False))
         finally:
             for f in (req,brut,tmp):f.unlink(missing_ok=True)
     def essai(self,d):

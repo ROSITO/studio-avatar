@@ -42,6 +42,7 @@ class ProjetsTest(unittest.TestCase):
         self.assertEqual(len(p['blocs']),3)
         self.assertIn('Deuxième phrase.',p['blocs'][0]['texte'])
         self.assertIn('Toujours curieux.',p['blocs'][0]['texte'])
+        self.assertIn('[laughs]',p['blocs'][0]['texte'])
         self.assertEqual(studio.TACHES,[])
         projets.lancer(pid,dict(action='manquants')); self.drain(); p=projets.lire(pid)
         self.assertEqual(len(self.generations),5)

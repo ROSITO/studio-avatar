@@ -364,3 +364,19 @@ after each staging copy. The codec and dense operations run on Metal;
 expert banks are never eagerly loaded as a whole. Prefill uses 64-frame batches.
 This trades disk bandwidth for a smaller working set. Its short
 trial is capped at 256 generated tokens. No production app is closed to make room.
+
+### Drama voice directions
+
+The text editor, timeline blocks and voice workshop include Soupir `[sighs]`,
+Rire `[laughs]` and Chuchoter `[whispers]` buttons when Drama 3 is selected.
+Visual TAGs such as `[curious]` open a video block; vocal directions remain inside
+that block and are passed to Drama without creating another rush. Additional
+Drama directions can be entered inline. Use `[voice:curious]` to request a vocal
+direction whose name also exists as a visual TAG; it is sent as `[curious]`.
+The interpretation of a direction depends on Drama; laughter and sighs were
+validated in a local Hélie trial. Whispering is supported by the upstream runner.
+
+OmniVoice and Qwen receive the spoken text with all bracketed directions removed.
+Imported audio is unchanged. Duration estimates ignore directions; generated
+audio determines the actual duration. Editing a block's vocal directions
+invalidates only that block's voice/video and the affected joins.
