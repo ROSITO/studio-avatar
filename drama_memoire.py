@@ -1,0 +1,56 @@
+"""Stage routed Drama experts from safetensors on disk, without loading whole banks."""
+import json
+import struct
+from pathlib import Path
+
+def activer(mx,modele,dossier):
+    import numpy as np
+    from mlx_audio.lm.models.switch_layers import QuantizedSwitchLinear
+    if not mx.metal.is_available():return
+    tables={}
+    types={'U32':'uint32','F32':'float32','F16':'float16','BF16':'uint16'}
+    for fichier in Path(dossier).glob('*.safetensors'):
+        with fichier.open('rb') as f:
+            taille=struct.unpack('<Q',f.read(8))[0]
+            entete=json.loads(f.read(taille))
+        for cle,info in entete.items():
+            if '.switch_mlp.' in cle:
+                tables[cle]=(fichier,types[info['dtype']],8+taille+info['data_offsets'][0],tuple(info['shape']))
+    sources={}
+    for nom,module in modele.named_modules():
+        if not isinstance(module,QuantizedSwitchLinear):continue
+        banques={}
+        for attribut in ('weight','scales','biases'):
+            valeur=module.get(attribut)
+            if valeur is None:continue
+            banques[attribut]=(tables[nom+'.'+attribut],valeur.dtype)
+            # Preserve shapes for introspection, but discard lazy whole-bank loads.
+            module[attribut]=mx.zeros(valeur.shape,dtype=valeur.dtype)
+        sources[id(module)]=banques
+    def calcul(self,x,indices,sorted_indices=False):
+        uniques,inverse=np.unique(np.asarray(indices),return_inverse=True)
+        with mx.stream(mx.cpu):
+            buffers={}
+            for cle,(description,dtype) in sources[id(self)].items():
+                fichier,type_numpy,decalage,forme=description
+                banque=np.memmap(fichier,mode='r',dtype=type_numpy,offset=decalage,shape=forme)
+                try:
+                    copie=np.array(banque[uniques],copy=True)
+                finally:
+                    banque._mmap.close()
+                valeur=mx.array(copie)
+                buffers[cle]=valeur.view(dtype) if valeur.dtype!=dtype else valeur
+            mx.eval(buffers)
+        with mx.stream(mx.gpu):
+            routes=mx.array(inverse.reshape(indices.shape).astype(np.int32))
+            resultat=mx.gather_qmm(x,buffers['weight'],buffers['scales'],buffers.get('biases'),
+                rhs_indices=routes,transpose=True,group_size=self.group_size,
+                bits=self.bits,mode=self.mode,sorted_indices=sorted_indices)
+            if 'bias' in self:resultat=resultat+mx.expand_dims(self['bias'][indices],-2)
+            mx.eval(resultat)
+        return resultat
+    QuantizedSwitchLinear.__call__=calcul
+    from mlx_audio.tts.models.fish_drama3 import drama3
+    drama3.PREFILL_CHUNK=64
+    mx.set_default_device(mx.gpu)
+    mx.set_wired_limit(0)

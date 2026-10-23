@@ -41,7 +41,7 @@ def disponible():
 def verifier(moteur):
     plafond=budget();besoin=BESOINS[moteur]
     if moteur=='drama3-mlx':
-        if pression()>=2:raise ValueError('Pression mémoire macOS : attendez son retour à la normale avant cet essai.')
+        if pression()>=4:raise ValueError('Pression mémoire macOS critique : essai refusé.')
         effectif=min(plafond,int(disponible()-4*GIB))
         if effectif<2*GIB:raise ValueError('Moins de 2 Go disponibles pour un essai après la réserve système de 4 Go.')
         return effectif
@@ -56,6 +56,11 @@ def configurer_mlx(mx,moteur):
     mx.set_cache_limit(min(256*1024**2,plafond//16))
     return plafond
 
+def danger_systeme(niveau=None):
+    # A warning alone may persist after a previous job; retain a real RAM reserve.
+    niveau=pression() if niveau is None else niveau
+    return niveau>=4 or (niveau>=2 and disponible()<4*GIB)
+
 def surveiller(plafond, mesure=None):
     stop=threading.Event()
     def boucle():
@@ -63,7 +68,7 @@ def surveiller(plafond, mesure=None):
             try:
                 rss=int(subprocess.check_output(['ps','-p',str(os.getpid()),'-o','rss='],stderr=subprocess.DEVNULL))*1024
                 gpu=mesure() if mesure else 0
-                if max(rss,gpu)>plafond or pression()>=2:
+                if max(rss,gpu)>plafond or danger_systeme():
                     os.write(2,b'Protection memoire : synthese arretee pour preserver les applications.\n')
                     os._exit(73)
             except (OSError,ValueError,RuntimeError,subprocess.SubprocessError):pass
@@ -98,8 +103,9 @@ def attendre(process,plafond,log):
         try:
             utilise=empreinte(process.pid);pic=max(pic,utilise)
             niveau=pression()
-            danger=utilise>plafond or niveau>=2
-            raison='pression macOS '+str(niveau) if niveau>=2 else 'budget dépassé'
+            systeme_en_danger=danger_systeme(niveau)
+            danger=utilise>plafond or systeme_en_danger
+            raison='pression macOS '+str(niveau) if systeme_en_danger else 'budget dépassé'
         except (OSError,ValueError,subprocess.SubprocessError):
             if process.poll() is not None:continue
             danger=True;raison='mesure mémoire indisponible'  # Fail closed.

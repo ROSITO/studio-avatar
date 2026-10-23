@@ -24,6 +24,12 @@ class BudgetMemoireTest(unittest.TestCase):
             self.assertIsNotNone(child.poll());self.assertIn('Protection mémoire externe',log.getvalue())
         finally:
             if child.poll() is None:child.kill();child.wait()
+    def test_alerte_moderee_conserve_reserve(self):
+        with patch.object(memoire,'disponible',return_value=6*memoire.GIB):
+            self.assertFalse(memoire.danger_systeme(2))
+            self.assertTrue(memoire.danger_systeme(4))
+        with patch.object(memoire,'disponible',return_value=3*memoire.GIB):
+            self.assertTrue(memoire.danger_systeme(2))
     def test_limites_mlx_et_cache(self):
         mx=Mock()
         with patch.dict(os.environ,{'STUDIO_TTS_MAX_RAM_GB':'16'}),patch.object(memoire,'physique',return_value=36*memoire.GIB),patch.object(memoire,'disponible',return_value=20*memoire.GIB),patch.object(memoire,'pression',return_value=1):
@@ -39,7 +45,7 @@ class BudgetMemoireTest(unittest.TestCase):
         with patch.dict(os.environ,{'STUDIO_TTS_MAX_RAM_GB':'100'}),patch.object(memoire,'physique',return_value=36*memoire.GIB):self.assertEqual(memoire.budget(),18*memoire.GIB)
     @unittest.skipIf(os.name=='nt','Watchdog Unix ps')
     def test_watchdog_interrompt_uniquement_son_processus(self):
-        p=subprocess.run([sys.executable,'-c','import memoire,time; memoire.pression=lambda:2; memoire.surveiller(1024**4); time.sleep(5)'],cwd=Path(__file__).parent,capture_output=True,timeout=7)
+        p=subprocess.run([sys.executable,'-c','import memoire,time; memoire.pression=lambda:4; memoire.surveiller(1024**4); time.sleep(5)'],cwd=Path(__file__).parent,capture_output=True,timeout=7)
         self.assertEqual(p.returncode,73);self.assertIn(b'Protection memoire',p.stderr)
 
 if __name__=='__main__':unittest.main()

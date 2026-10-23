@@ -353,7 +353,14 @@ integrated speech workers; external LTX and image engines have separate allocato
 Drama trials also have an external watchdog in the server, independent of the
 inference interpreter's GIL. On macOS it samples `proc_pid_rusage` resident memory
 and physical footprint every 100 ms and kills only the inference child if its
-budget is exceeded or macOS reports memory pressure. Unknown measurement fails
+budget is exceeded, macOS reports critical memory pressure, or a memory warning
+coincides with less than 4 GiB available. A moderate warning alone does not stop
+a trial that still has its reserve. Unknown measurement fails
 closed. MLX's allocation limit remains a guideline, not a hard OS quota. Drama's
-virtual mapped weight size is not used as a resident-memory test. Its short trial
-is capped at 256 generated tokens. No production app is closed to make room.
+virtual mapped weight size is not used as a resident-memory test. Drama uses the
+CPU for lazy model loading, then stages only routed experts directly from
+safetensors on the model disk into temporary GPU buffers. Source mappings are closed
+after each staging copy. The codec and dense operations run on Metal;
+expert banks are never eagerly loaded as a whole. Prefill uses 64-frame batches.
+This trades disk bandwidth for a smaller working set. Its short
+trial is capped at 256 generated tokens. No production app is closed to make room.

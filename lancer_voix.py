@@ -27,6 +27,10 @@ def main():
     import memoire
     plafond=memoire.verifier(d['moteur'])
     import mlx.core as mx
+    if d['moteur']=='drama3-mlx':
+        # CPU keeps MoE weights pageable instead of pinning the full model on Metal.
+        mx.set_default_device(mx.cpu)
+        print('Drama 3 : chargement différé, experts lus sur disque',flush=True)
     memoire.configurer_mlx(mx,d['moteur'])
     # Drama may map more weights than its resident footprint: the external
     # supervisor limits actual process memory, not the virtual mapped size.
@@ -37,7 +41,36 @@ def main():
     mx.random.seed(d['seed'])
     print('Chargement du modèle vocal local',flush=True)
     with vue_modele(d['modele'],str(Path(d['sortie']).parent)) as vue:
-        modele=load_model(str(vue))
+        modele=load_model(str(vue),lazy=d['moteur']=='drama3-mlx')
+        if d['moteur']=='drama3-mlx' and mx.metal.is_available():
+            # Codec convolutions have a very slow CPU fallback. Keep only this
+            # small component on Metal; the large MoE backbone stays on CPU.
+            def sur_gpu(fn):
+                def appel(*args,**kwargs):
+                    with mx.stream(mx.gpu):
+                        resultat=fn(*args,**kwargs)
+                        mx.eval(resultat)
+                    return resultat
+                return appel
+            for nom in ('encode','streaming_step'):
+                setattr(modele.codec,nom,sur_gpu(getattr(modele.codec,nom)))
+            import drama_memoire
+            drama_memoire.activer(mx,modele,vue)
+            print('GPU : experts sélectionnés uniquement, banques conservées sur disque',flush=True)
+        if d['moteur']=='drama3-mlx':
+            prefill=modele._prefill
+            def pre_remplir(frames,caches,debut,fin):
+                print(f'Préparation vocale : {fin-debut} trames',flush=True)
+                resultat=prefill(frames,caches,debut,fin)
+                print('Préparation vocale terminée',flush=True)
+                return resultat
+            modele._prefill=pre_remplir
+            frames_origine=modele._frames
+            def trames(*args,**kwargs):
+                for i,trame in enumerate(frames_origine(*args,**kwargs),1):
+                    if i==1 or i%16==0:print(f'Voix : {i} trames générées',flush=True)
+                    yield trame
+            modele._frames=trames
         print('Génération de la prise',flush=True)
         lang={'fr':'French','en':'English','es':'Spanish','de':'German','it':'Italian','pt':'Portuguese','zh':'Chinese','ja':'Japanese','ko':'Korean'}.get(d['langue'],d['langue'])
         out=Path(d['sortie'])
