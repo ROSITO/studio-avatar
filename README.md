@@ -380,3 +380,26 @@ OmniVoice and Qwen receive the spoken text with all bracketed directions removed
 Imported audio is unchanged. Duration estimates ignore directions; generated
 audio determines the actual duration. Editing a block's vocal directions
 invalidates only that block's voice/video and the affected joins.
+
+### Reuse Drama reference preparation
+
+Drama saves the reference-only attention and linear states losslessly in
+`<model directory>/.studio-avatar-cache` on the model disk. The requested speech
+is always generated anew. The cache key includes reference audio, transcript,
+model file sizes/mtimes, runtime versions and the offload adapter. Encoded
+reference tokens must also match before a saved prefix is reused. Invalid or
+unreadable entries fall back to ordinary preparation. Cache entries contain
+private voice data and must not be published.
+
+The inference process still exits after every take, so its GPU memory is released
+before LTX runs. Cache storage is limited to 2 GiB (old entries are evicted). Set
+`STUDIO_DRAMA_CACHE=0` on the server to disable reuse. `/api/voix/essai` accepts an
+optional integer `seed` for reproducible comparisons; omitted seeds remain random.
+
+Measured on a 36 GiB Apple Silicon Mac with the same 2.41-second tagged utterance
+and seed: first take **492.23 s**, reused-reference take **135.83 s** (**3.62×**).
+Both decoded PCM streams matched the previously validated take exactly. The
+reference prefix occupied about **79 MiB** on the model disk. This measurement
+applies to reuse of the same reference; a new or changed reference still needs
+one full preparation. Memory admission checks and both inference watchdogs remain
+active.

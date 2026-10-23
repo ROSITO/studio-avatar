@@ -93,6 +93,14 @@ class VoixIntegreesTest(unittest.TestCase):
         with patch.object(studio,'lancer',side_effect=RuntimeError('Erreur moteur')):
             with self.assertRaises(RuntimeError):self.atelier.generer(t,'Essai',self.profil['id'],'fr',out)
         self.assertEqual(out.read_bytes(),b'ancienne prise');self.assertFalse(list(self.atelier.root.glob('*requete.json')))
+    def test_seed_essai_optionnelle_et_bornee(self):
+        t=self.atelier.essai(dict(profil=self.profil['id'],texte='Bonjour.',seed=7))
+        self.assertEqual(t['params']['seed'],7)
+        autre=self.atelier.essai(dict(profil=self.profil['id'],texte='Bonjour.'))
+        self.assertNotIn('seed',autre['params'])
+        for valeur in (-1,2**31,True,'7',1.5):
+            with self.assertRaisesRegex(ValueError,'Seed vocale'):
+                self.atelier.essai(dict(profil=self.profil['id'],texte='Bonjour.',seed=valeur))
     def test_ancien_id_et_file_capture_le_modele(self):
         profils=self.atelier.lire();profils[0]['ancien_id']='ancien';self.atelier.sauver(profils)
         self.assertEqual(self.atelier.profil('ancien')['id'],self.profil['id'])

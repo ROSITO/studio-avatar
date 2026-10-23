@@ -121,11 +121,14 @@ class Atelier:
     def essai(self,d):
         profil=self.profil(d.get('profil'));texte=str(d.get('texte','')).strip()
         if not texte or len(texte)>5000:raise ValueError('Saisissez entre 1 et 5000 caractères.')
+        seed=d.get('seed')
+        if seed is not None and (isinstance(seed,bool) or not isinstance(seed,int) or not 0<=seed<2**31):raise ValueError('Seed vocale : entier entre 0 et 2147483647.')
         t=dict(id=uuid.uuid4().hex[:12],type='voix',params=dict(profil=profil['id'],texte=texte,langue=profil['langue']),modeles=self.s.GESTION_MODELES.selection(),etat='en attente',cree=time.time())
+        if seed is not None:t['params']['seed']=seed
         with self.s.VERROU:self.s.TACHES.append(t)
         self.s.sauver()
         return t
     def executer(self,t):
         p=t['params'];out=self.s.ICI/'audios'/('voix-'+t['id']+'.wav')
-        self.generer(t,p['texte'],p['profil'],p['langue'],out,seed=int(t['id'][:8],16)%2147483648)
+        self.generer(t,p['texte'],p['profil'],p['langue'],out,seed=p.get('seed',int(t['id'][:8],16)%2147483648))
         t['resultat']=dict(fichier=out.name,profil=p['profil'])

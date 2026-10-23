@@ -6,6 +6,7 @@ import tempfile
 import signal
 from pathlib import Path
 import sys
+import time
 
 @contextmanager
 def vue_modele(source, parent):
@@ -58,11 +59,14 @@ def main():
             drama_memoire.activer(mx,modele,vue)
             print('GPU : experts sélectionnés uniquement, banques conservées sur disque',flush=True)
         if d['moteur']=='drama3-mlx':
+            import drama_cache
+            drama_cache.installer(mx,modele,d)
             prefill=modele._prefill
             def pre_remplir(frames,caches,debut,fin):
                 print(f'Préparation vocale : {fin-debut} trames',flush=True)
+                chrono=time.perf_counter()
                 resultat=prefill(frames,caches,debut,fin)
-                print('Préparation vocale terminée',flush=True)
+                print(f'Préparation vocale terminée ({time.perf_counter()-chrono:.2f} s)',flush=True)
                 return resultat
             modele._prefill=pre_remplir
             frames_origine=modele._frames
