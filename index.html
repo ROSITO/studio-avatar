@@ -417,13 +417,20 @@ function insererBalise(id,b) {
   ta.dispatchEvent(new Event('input',{bubbles:true}));
 }
 function insererTon(b) { insererBalise('texte',b); }
+function baliseVocale(b){return (E.balises||{})[b.toLowerCase()]?'voice:'+b:b;}
+function directionVocale(id){
+  const b=prompt('Direction vocale libre (ex. : sourire dans la voix, rassurant)');
+  if(b?.trim()&&!/[<>\[\]\r\n]/.test(b))insererBalise(id,baliseVocale(b.trim()));
+}
 function barreVocale(id,importe=false,verrou=false,profilId=null) {
   if(importe)return '<p class="mut" style="font-size:12px">Audio importé : les balises vocales ne modifient pas la voix existante.</p>';
   const profil=(VOIX.voix||[]).find(v=>v.id===profilId||v.ancien_id===profilId);
   const compatible=!profil?.moteur_origine||profil.moteur_origine==='drama3-mlx';
   const drama=VOIX.moteur==='drama3-mlx'&&compatible;
-  return `<div class="encadre" style="padding:12px;margin:8px 0"><strong>Jeu vocal · Drama 3</strong><p class="mut" style="font-size:12px">${drama?'Ces indications jouent sur la voix sans ouvrir de bloc vidéo.':!compatible?'Cette voix utilise un autre moteur. Les balises vocales nécessitent un profil Drama 3.':'Sélectionnez Drama 3 dans Modèles pour les interpréter. Avec les autres moteurs, elles sont retirées du texte prononcé.'}</p><div style="display:flex;flex-wrap:wrap;gap:6px">${(E.balises_vocales||[]).map(t=>`<button type="button" class="tonbtn" ${!drama||verrou?'disabled':''} onclick="insererBalise('${id}','${t.balise}')" title="Insérer [${t.balise}]">${esc(t.nom)} <small>[${t.balise}]</small></button>`).join('')}</div><small class="mut">Les TAG de gestuelle restent indépendants. Les autres indications Drama peuvent être saisies directement entre crochets.</small></div>`;
+  const tags=E.balises_vocales||[],groupes=[...new Set(tags.map(t=>t.groupe||'Réactions'))];
+  return `<div class="encadre" style="padding:12px;margin:8px 0"><strong>Direction vocale · Drama 3</strong><p class="mut" style="font-size:12px">${drama?'Cliquez pour insérer une indication au curseur. Les émotions vocales ne créent pas de bloc vidéo.':!compatible?'Cette voix utilise un autre moteur. Choisissez une voix Drama 3 pour interpréter ces indications.':'Sélectionnez Drama 3 dans Modèles pour interpréter les indications vocales.'}</p>${groupes.map(g=>`<div style="margin:10px 0"><strong style="font-size:12px">${esc(g)}</strong><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">${tags.filter(t=>(t.groupe||'Réactions')===g).map(t=>`<button type="button" class="tonbtn" ${!drama||verrou?'disabled':''} onclick="insererBalise('${id}','${baliseVocale(t.balise)}')" title="Insérer [${esc(t.balise)}]">${esc(t.nom)}</button>`).join('')}</div></div>`).join('')}<button type="button" class="sec petit" ${!drama||verrou?'disabled':''} onclick="directionVocale('${id}')">＋ Direction libre</button><p class="mut" style="font-size:11px;margin-bottom:0">Drama accepte des descriptions libres, pas une liste fermée de tags. Leur rendu varie selon la voix ; cette palette n’a pas encore été entièrement validée à l’écoute sur Mac.</p></div>`;
 }
+
 function storyboardHTML(compact) {
   const segs = segmentsTexte($('texte').value); if (!segs.length) return '';
   const L = CH.avatar ? infos(CH.avatar).L : { tons: {} };

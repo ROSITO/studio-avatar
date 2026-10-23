@@ -10,3 +10,9 @@ console.log('Balises : vocal cues preserved without extra visual blocks.');
 vm.runInContext(html.slice(html.indexOf('function profilsCompatibles('),html.indexOf('function dessinerVoix(')),ctx);
 ctx.VOIX={moteur:'drama3-mlx',voix:[{id:'drama',moteur_origine:'drama3-mlx'},{id:'omni',moteur_origine:'omnivoice'},{id:'ancien'}]};
 assert.deepEqual(JSON.parse(JSON.stringify(ctx.profilsCompatibles())).map(v=>v.id),['drama','ancien']);
+
+vm.runInContext(html.slice(html.indexOf('function baliseVocale('),html.indexOf('function directionVocale(')),ctx);
+assert.equal(ctx.baliseVocale('curious'),'voice:curious');
+assert.equal(ctx.baliseVocale('angry'),'angry');
+assert.deepEqual(blocs('[voice:curious] Bonjour. [voice:serious] Bon.'),[{ton:'neutre',texte:'[voice:curious] Bonjour. [voice:serious] Bon.'}]);
+new vm.Script(html.split('<script>')[1].split('</script>')[0]);
