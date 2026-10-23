@@ -9,6 +9,8 @@ import studio, voix, test_projets
 class VoixIntegreesTest(unittest.TestCase):
     def setUp(self):
         self.fixture=test_projets.ProjetsTest();self.fixture.setUp()
+        self.memoire_patch=patch('memoire.verifier',return_value=16*1024**3);self.memoire_patch.start()
+        self.addCleanup(self.memoire_patch.stop)
         self.atelier=voix.Atelier(studio)
         ref=studio.ICI/'references'/'ref.wav'
         subprocess.run(['ffmpeg','-v','error','-y','-f','lavfi','-i','sine=frequency=440:duration=3',str(ref)],check=True)

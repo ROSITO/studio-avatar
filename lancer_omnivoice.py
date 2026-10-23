@@ -9,10 +9,14 @@ def main():
     def interrompre(signum,frame):raise SystemExit('Synthèse interrompue')
     signal.signal(signal.SIGTERM,interrompre)
     d=json.loads(Path(sys.argv[1]).read_text())
+    import memoire
+    plafond=memoire.verifier('omnivoice')
+    garde=memoire.surveiller(plafond)
     import torch
     import soundfile as sf
     from omnivoice import OmniVoice
     device='mps' if torch.backends.mps.is_available() else 'cuda' if torch.cuda.is_available() else 'cpu'
+    if device=='mps':torch.mps.set_per_process_memory_fraction(plafond/memoire.physique())
     torch.manual_seed(d['seed'])
     print('Chargement OmniVoice · '+device,flush=True)
     with vue_modele(d['modele'],str(Path(d['sortie']).parent)) as vue:

@@ -329,3 +329,19 @@ It imports upstream `omnivoice`, never VoiceStudio's package or HTTP synthesis A
 OmniVoice code is Apache 2.0; its model weights are CC-BY-NC. See the
 [upstream model card](https://huggingface.co/k2-fsa/OmniVoice). A listening comparison
 is still needed; using the same model does not guarantee bit-identical takes.
+
+### Voice memory protection
+
+Speech has a default 16 GiB budget, never above half of physical RAM. Set
+`STUDIO_TTS_MAX_RAM_GB` to lower it. Admission checks run before model loading:
+model estimates must fit the budget, macOS memory pressure must be normal, and
+available RAM must cover the estimate plus a 4 GiB reserve. Drama 3's conservative
+28 GiB estimate prevents it from running under this default budget on a 36 GiB Mac.
+The MLX cache is limited to 256 MiB; MPS synthesis configures PyTorch's allocator
+fraction. An isolated watchdog checks resident memory and macOS pressure every
+0.5 seconds; the MLX worker also checks active + cached Metal allocations and
+exits with a visible protection error when over budget. This is a best-effort
+protection, not an OS-enforced memory sandbox: MLX's memory limit alone is a
+[guideline](https://ml-explore.github.io/mlx/build/html/python/_autosummary/mlx.core.set_memory_limit.html).
+No high-memory inference is run in the automated tests. These guards apply to
+integrated speech workers; external LTX and image engines have separate allocators.

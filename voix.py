@@ -1,4 +1,5 @@
 """Profils vocaux et synthèse locale. Aucune dépendance au serveur VoiceStudio."""
+import memoire
 import json
 import os
 from pathlib import Path
@@ -33,8 +34,11 @@ class Atelier:
         for mid in ENGINES:
             e=g.entry(mid);p=g.path(e);present=g.valid(e,p)
             support=compatible or mid=='omnivoice';runtime=self.interpreteur(mid).is_file()
-            engines.append(dict(id=mid,display_name=e['nom'],available=support and runtime and present,
-                reason='' if support and runtime and present else 'Apple Silicon requis' if not support else 'Installez le runtime '+('.venv-omnivoice' if mid=='omnivoice' else '.venv-voix') if not runtime else 'Téléchargez les poids dans Modèles',supports_cloning=True,supports_voice_design=False))
+            try:
+                memoire.verifier(mid);memoire_ok=True;raison_memoire=''
+            except ValueError as exc:memoire_ok=False;raison_memoire=str(exc)
+            engines.append(dict(id=mid,display_name=e['nom'],available=support and runtime and present and memoire_ok,
+                reason=raison_memoire if not memoire_ok else '' if support and runtime and present else 'Apple Silicon requis' if not support else 'Installez le runtime '+('.venv-omnivoice' if mid=='omnivoice' else '.venv-voix') if not runtime else 'Téléchargez les poids dans Modèles',supports_cloning=True,supports_voice_design=False))
         return dict(ok=True,actif=moteur,engines=engines)
     def liste(self):
         c=self.catalogue();pret=next(e['available'] for e in c['engines'] if e['id']==c['actif'])
@@ -92,6 +96,7 @@ class Atelier:
         choix=(t.get('modeles') or g.selection()).get('synthese')
         if not choix:raise ValueError('Choisissez un modèle de synthèse dans Modèles.')
         if choix['id'] not in ENGINES or not choix['installe']:raise ValueError('Installez les poids du moteur de voix dans Modèles.')
+        memoire.verifier(choix['id'])
         origine=profil.get('moteur_origine')
         if origine and choix['id']!=origine:raise ValueError('Cette voix utilise '+origine+'. Sélectionnez ce moteur dans Mes voix ; changer de moteur modifie le timbre.')
         python=self.interpreteur(choix['id'])

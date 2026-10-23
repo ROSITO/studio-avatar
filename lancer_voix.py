@@ -24,7 +24,11 @@ def main():
     def interrompre(signum, frame):raise SystemExit('Synthèse interrompue')
     signal.signal(signal.SIGTERM,interrompre)
     d=json.loads(Path(sys.argv[1]).read_text())
+    import memoire
+    plafond=memoire.verifier(d['moteur'])
     import mlx.core as mx
+    memoire.configurer_mlx(mx,d['moteur'])
+    garde=memoire.surveiller(plafond,lambda:mx.get_active_memory()+mx.get_cache_memory())
     from mlx_audio.tts.utils import load_model
     from mlx_audio.tts.generate import generate_audio
     mx.random.seed(d['seed'])

@@ -125,6 +125,7 @@ def lancer(t, cmd, env=None):
         p = subprocess.Popen([str(c) for c in cmd], stdout=log, stderr=subprocess.STDOUT, env={**os.environ, **(env or {})}, cwd=ICI)
         EN_COURS['proc'] = p; code = p.wait(); EN_COURS['proc'] = None
     if t.get('annuler'): raise RuntimeError('Tâche annulée')
+    if code==73: raise RuntimeError('Protection mémoire : synthèse arrêtée pour préserver les applications.')
     if code: raise RuntimeError(f'commande terminée avec le code {code} (voir le journal)')
 
 def ltx(t, images, prompt, W, H, frames, seed, sortie, audio=None):
