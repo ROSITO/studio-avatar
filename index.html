@@ -862,7 +862,7 @@ function dessinerVoix() {
   options($('voix-essai-profil'),VOIX.voix.map(v=>[v.id,v.nom]));
   options($('voix-reference'),(E.fichiers.references||[]).filter(x=>/\.(wav|mp3|m4a|flac|ogg)$/i.test(x.nom)).map(x=>[x.nom,x.nom]));
   $('voix-generer').disabled=!VOIX.ok||!VOIX.voix.length;
-  $('voix-prises').innerHTML=E.taches.filter(t=>t.type==='voix').map(t=>`<article class="encadre"><strong>${esc(t.etat)} · prise vocale</strong><p>${esc(t.params.texte)}</p>${t.resultat?.fichier?`<audio controls preload="none" style="width:100%" src="${f('audios',t.resultat.fichier)}"></audio><p><a href="${f('audios',t.resultat.fichier)}" download>Télécharger cette prise</a> · Disponible dans « J’ai déjà l’audio ».</p>`:`<p class="mut">${esc(t.erreur||t.etape||'En attente dans la file de calcul')}</p>${['en cours','en attente'].includes(t.etat)?`<button class="sec petit" onclick="annuler('${t.id}')">Annuler</button>`:''}`}</article>`).join('');
+  $('voix-prises').innerHTML=E.taches.filter(t=>t.type==='voix').map(t=>`<article class="encadre"><strong>${esc(t.etat)} · prise vocale · ${esc(t.modeles?.synthese?.id||'moteur non renseigné')}</strong><p>${esc(t.params.texte)}</p>${t.resultat?.fichier?`<audio controls preload="none" style="width:100%" src="${f('audios',t.resultat.fichier)}"></audio><p><a href="${f('audios',t.resultat.fichier)}" download>Télécharger cette prise</a> · Disponible dans « J’ai déjà l’audio ».</p>`:`<p class="mut">${esc(t.erreur||t.etape||'En attente dans la file de calcul')}</p>${['en cours','en attente'].includes(t.etat)?`<button class="sec petit" onclick="annuler('${t.id}')">Annuler</button>`:''}`}</article>`).join('');
 }
 async function actionVoix(action,d={}) {
   $('voix-erreur').textContent='';
