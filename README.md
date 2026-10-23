@@ -334,9 +334,13 @@ is still needed; using the same model does not guarantee bit-identical takes.
 
 Speech has a default 16 GiB budget, never above half of physical RAM. Set
 `STUDIO_TTS_MAX_RAM_GB` to lower it. Admission checks run before model loading:
-model estimates must fit the budget, macOS memory pressure must be normal, and
+standard model estimates must fit the budget, macOS memory pressure must be normal, and
 available RAM must cover the estimate plus a 4 GiB reserve. Drama 3's conservative
-28 GiB estimate prevents it from running under this default budget on a 36 GiB Mac.
+28 GiB estimate is informational: Drama 3 is admitted as a bounded experiment,
+not rejected solely for its model size. Its effective budget is the smaller of
+the configured budget and currently available RAM minus a 4 GiB system reserve.
+At least 2 GiB must remain for the trial. A bounded trial may stop before producing
+audio if the model cannot run within the available memory.
 The MLX cache is limited to 256 MiB; MPS synthesis configures PyTorch's allocator
 fraction. An isolated watchdog checks resident memory and macOS pressure every
 0.5 seconds; the MLX worker also checks active + cached Metal allocations and
@@ -345,3 +349,11 @@ protection, not an OS-enforced memory sandbox: MLX's memory limit alone is a
 [guideline](https://ml-explore.github.io/mlx/build/html/python/_autosummary/mlx.core.set_memory_limit.html).
 No high-memory inference is run in the automated tests. These guards apply to
 integrated speech workers; external LTX and image engines have separate allocators.
+
+Drama trials also have an external watchdog in the server, independent of the
+inference interpreter's GIL. On macOS it samples `proc_pid_rusage` resident memory
+and physical footprint every 100 ms and kills only the inference child if its
+budget is exceeded or macOS reports memory pressure. Unknown measurement fails
+closed. MLX's allocation limit remains a guideline, not a hard OS quota. Drama's
+virtual mapped weight size is not used as a resident-memory test. Its short trial
+is capped at 256 generated tokens. No production app is closed to make room.

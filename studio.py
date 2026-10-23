@@ -123,7 +123,13 @@ def lancer(t, cmd, env=None):
     with open(ICI / 'taches' / f"{t['id']}.log", 'a') as log:
         log.write('$ ' + ' '.join(map(str, cmd)) + '\n'); log.flush()
         p = subprocess.Popen([str(c) for c in cmd], stdout=log, stderr=subprocess.STDOUT, env={**os.environ, **(env or {})}, cwd=ICI)
-        EN_COURS['proc'] = p; code = p.wait(); EN_COURS['proc'] = None
+        EN_COURS['proc'] = p
+        try:
+            if env and env.get('STUDIO_TTS_EFFECTIVE_LIMIT'):
+                import memoire
+                code=memoire.attendre(p,int(env['STUDIO_TTS_EFFECTIVE_LIMIT']),log)
+            else:code=p.wait()
+        finally:EN_COURS['proc'] = None
     if t.get('annuler'): raise RuntimeError('Tâche annulée')
     if code==73: raise RuntimeError('Protection mémoire : synthèse arrêtée pour préserver les applications.')
     if code: raise RuntimeError(f'commande terminée avec le code {code} (voir le journal)')

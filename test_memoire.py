@@ -7,11 +7,23 @@ from unittest.mock import patch,Mock
 import memoire
 
 class BudgetMemoireTest(unittest.TestCase):
-    def test_drama_refuse_avant_allocation(self):
+    def test_drama_admis_pour_essai_borne(self):
         mx=Mock()
-        with patch.dict(os.environ,{'STUDIO_TTS_MAX_RAM_GB':'16'}),patch.object(memoire,'physique',return_value=36*memoire.GIB):
-            with self.assertRaisesRegex(ValueError,'Modèle refusé avant chargement'):memoire.configurer_mlx(mx,'drama3-mlx')
-        mx.set_memory_limit.assert_not_called()
+        with patch.dict(os.environ,{'STUDIO_TTS_MAX_RAM_GB':'16'}),patch.object(memoire,'physique',return_value=36*memoire.GIB),patch.object(memoire,'disponible',return_value=24*memoire.GIB),patch.object(memoire,'pression',return_value=1):
+            self.assertEqual(memoire.configurer_mlx(mx,'drama3-mlx'),16*memoire.GIB)
+        mx.set_memory_limit.assert_called_once_with(16*memoire.GIB)
+    def test_drama_reserve_quatre_gio_aux_applications(self):
+        with patch.object(memoire,'budget',return_value=16*memoire.GIB),patch.object(memoire,'disponible',return_value=10*memoire.GIB),patch.object(memoire,'pression',return_value=1):
+            self.assertEqual(memoire.verifier('drama3-mlx'),6*memoire.GIB)
+    def test_superviseur_externe_tue_uniquement_enfant(self):
+        import io
+        child=subprocess.Popen([sys.executable,'-c','import time; time.sleep(5)'])
+        try:
+            with patch.object(memoire,'empreinte',return_value=1025),patch.object(memoire,'pression',return_value=1):
+                log=io.StringIO();self.assertEqual(memoire.attendre(child,1024,log),73)
+            self.assertIsNotNone(child.poll());self.assertIn('Protection mémoire externe',log.getvalue())
+        finally:
+            if child.poll() is None:child.kill();child.wait()
     def test_limites_mlx_et_cache(self):
         mx=Mock()
         with patch.dict(os.environ,{'STUDIO_TTS_MAX_RAM_GB':'16'}),patch.object(memoire,'physique',return_value=36*memoire.GIB),patch.object(memoire,'disponible',return_value=20*memoire.GIB),patch.object(memoire,'pression',return_value=1):
