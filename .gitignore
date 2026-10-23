@@ -32,3 +32,6 @@ venv/
 # Private model selections and download metadata
 /modeles.json
 /.modeles-*.json
+
+# Private voice profiles and synthesis requests
+/voix/

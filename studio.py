@@ -168,6 +168,7 @@ def faire(t):
     if 'modeles' not in t: t['modeles'] = GESTION_MODELES.selection()
     if t['type'].startswith('projet_'):
         projets.executer(t); return
+    if t['type'] == 'voix': ATELIER_VOIX.executer(t); return
     if t['type'] == 'portrait': portrait(t); return
     if t['type'] == 'clip':
         src = ICI / 'sources' / p['source']; W, H = resolution(src)
@@ -409,19 +410,8 @@ def musetalk(t, video, audio, out, shift):
     brut.unlink(missing_ok=True); apercu(out)
 
 def voix(t, texte, profil, langue, out, seed=42):
-    """Synthèse locale par VoiceStudio (réglages de Codex : sans fondu ni post-traitement, qui avalaient les débuts de mots)."""
-    import urllib.request, urllib.parse
-    champs = dict(text=texte, language=langue, profile_id=profil, seed=str(seed), guidance_scale='2', effect_preset='raw',
-                  wav_bits='24', postprocess_output='false', crossfade_ms='0')
-    engine = (t.get('modeles') or GESTION_MODELES.selection()).get('voix', {}).get('id')
-    if engine: champs['engine'] = engine
-    with open(ICI / 'taches' / f"{t['id']}.log", 'a') as log: log.write(f'VoiceStudio : {len(texte)} caractères, profil {profil}\n')
-    try:
-        with urllib.request.urlopen(urllib.request.Request(f'{VOICESTUDIO}/generate', data=urllib.parse.urlencode(champs).encode()), timeout=1800) as r:
-            data = r.read()
-    except OSError as e: raise RuntimeError(f'VoiceStudio injoignable sur {VOICESTUDIO} : lance-le, ou importe un audio ({e})')
-    if data[:4] != b'RIFF': raise RuntimeError('VoiceStudio a renvoyé autre chose qu\'un WAV')
-    out.write_bytes(data)
+    """Synthèse intégrée ; les anciens identifiants migrés restent reconnus."""
+    return ATELIER_VOIX.generer(t,texte,profil,langue,out,seed)
 
 def travailleur():
     (ICI / 'taches').mkdir(exist_ok=True)
@@ -466,12 +456,7 @@ class H(BaseHTTPRequestHandler):
         if u.path == '/api/modeles/voix': return self.json(GESTION_MODELES.voix_catalogue())
         if u.path == '/api/modeles': return self.json(GESTION_MODELES.catalogue())
         if u.path == '/api/projets': return self.json(projets.liste())
-        if u.path == '/api/voix':
-            import urllib.request
-            try:
-                with urllib.request.urlopen(f'{VOICESTUDIO}/profiles', timeout=3) as r:
-                    return self.json(dict(ok=True, voix=[dict(id=x['id'], nom=x.get('name', x['id'])) for x in json.load(r)]))
-            except Exception: return self.json(dict(ok=False, voix=[]))
+        if u.path == '/api/voix': return self.json(ATELIER_VOIX.liste())
         if u.path.startswith('/api/journal/'):
             f = ICI / 'taches' / f"{nom_sur(u.path.rsplit('/', 1)[1])}.log"
             txt = f.read_text(errors='replace')[-4000:] if f.exists() else ''
@@ -507,6 +492,16 @@ class H(BaseHTTPRequestHandler):
         self.send_error(400)
     def do_POST(self):
         u = urlparse(self.path); d = json.loads(self.corps() or b'{}')
+        if u.path.startswith('/api/voix/'):
+            try:
+                action=u.path.rsplit('/',1)[1]
+                if action=='enregistrer': resultat=ATELIER_VOIX.enregistrer(d)
+                elif action=='supprimer': ATELIER_VOIX.supprimer(d.get('id')); resultat=dict(ok=True)
+                elif action=='essai': resultat=ATELIER_VOIX.essai(d)
+                elif action=='importer-voicestudio': resultat=ATELIER_VOIX.importer_ancien()
+                else: raise ValueError('Action vocale inconnue')
+                return self.json(resultat)
+            except (ValueError, OSError, KeyError) as e: return self.json(dict(erreur=str(e)),400)
         if u.path == '/api/apercu':
             try: return self.json(apercus.demander(d.get('projet'), d.get('jonction')))
             except (ValueError, KeyError) as e: return self.json(dict(erreur=str(e)), 400)
@@ -563,9 +558,11 @@ class H(BaseHTTPRequestHandler):
 import projets
 import modeles
 import apercus
+import voix as voix_locale
 apercus.installer(sys.modules[__name__])
 GESTION_MODELES = modeles.Gestionnaire(sys.modules[__name__])
 projets.installer(sys.modules[__name__])
+ATELIER_VOIX = voix_locale.Atelier(sys.modules[__name__])
 
 if __name__ == '__main__':
     threading.Thread(target=travailleur, daemon=True).start()

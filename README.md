@@ -10,7 +10,7 @@ with LTX transitions. Assemble only when you are ready.
 
 **Experimental software.** The interface is currently in French. The generation
 recipe targets Apple Silicon and separately installed LTX-2-MLX, optionally MuseTalk
-1.5, and an optional VoiceStudio-compatible speech API. A complete GPU render is not part
+1.5, and integrated MLX speech synthesis. A complete GPU render is not part
 of automated testing. No pretrained models, personal projects, voices, portraits,
 example videos, or private configuration are distributed.
 
@@ -141,10 +141,17 @@ its required models, and follow its upstream setup instructions and licenses.
    `musetalkV15`, `sd-vae`, Whisper, and face-processing models. Configure its
    checkout and Python interpreter below. The local recipe was developed with the
    [musetalk-macos](https://github.com/huzp611/musetalk-macos) fork. `lancer_musetalk15.py` is a local adapter.
-4. For text-to-speech, run a compatible VoiceStudio server. The expected contract
-   is `GET /profiles` returning profiles with `id` and `name`, and `POST /generate`
-   accepting form fields and returning a WAV (see `studio.voix`). Alternatively,
-   import your own WAV/MP3 audio.
+4. For integrated text-to-speech on Apple Silicon, run `python3 installer_voix.py`
+   (Python 3.11+ recommended). This creates a separate `.venv-voix` runtime.
+   In **Modèles → Synthèse vocale intégrée**, verify the download size, then install
+   **Qwen3-TTS 0.6B MLX** or **Drama 3 MLX**. Weights use `STUDIO_MODELS_DIR`,
+   including an external SSD when configured. Import audio instead on other platforms.
+5. Open **Mes voix**. Import a 2–60 second reference, enter its exact transcript,
+   name the profile and generate a test take. The same profile is available when
+   creating a video. VoiceStudio is not needed. **Importer mes profils VoiceStudio**
+   is an optional one-time migration while its local server is available; it copies
+   references/transcripts and preserves old project profile IDs. Different speech
+   models can change the voice's sound. Existing audio is never regenerated implicitly.
 
 ```bash
 cp .env.example .env
@@ -156,7 +163,7 @@ python3 studio.py
 ```
 
 `.env` is a shell configuration example, **not** automatically loaded by Python.
-The default port is 8765, the default speech API is `http://127.0.0.1:3900`, and
+The default port is 8765. The optional VoiceStudio migration URL is `http://127.0.0.1:3900`, and
 the default model directory is `~/.cache/studio-avatar/models`. See
 [.env.example](.env.example) for all supported variables.
 
@@ -211,7 +218,7 @@ The **Modèles** page provides:
 - MuseTalk 1.5 weights with SD-VAE, Whisper, DWPose, and face-parsing components;
 - discovery of installed packs and imports of existing local LTX-2.3 folders;
 - persisted selection for subsequent jobs, without rebuilding existing clips;
-- the live VoiceStudio TTS engine catalogue and per-synthesis engine selection.
+- integrated Qwen3-TTS and Fish Audio Drama 3 MLX weights and per-task selection.
 
 Click **Vérifier la taille** to resolve upstream manifests and show the actual bytes
 for the files used by this recipe. Click **Télécharger / reprendre** to download.
@@ -236,10 +243,21 @@ preferences. It is stripped from cross-host redirects.
 Model switches and weight installations are blocked while generation jobs are
 pending or running. Each timeline job records its selection when queued. Existing
 clips and audio are retained: changing the voice engine does not replace audio
-that a block has already generated. Voice engine packages/weights continue to be
-installed and licensed by VoiceStudio; Studio Avatar lists available engines and
-passes the chosen `engine` to its compatible `/generate` API. Legacy speech servers
-without `/engines/tts` still work with the original speech interface.
+that a block has already generated. Speech runs in an isolated subprocess and releases
+its memory before video generation. No output fade, crossfade or silence trimming is
+applied. Cloned profiles, requests and synthetic-audio metadata stay private. A
+cancelled/failed synthesis cannot replace an existing take. Weight loading is offline;
+only an explicit catalogue download can fetch new model files.
+
+Drama 3 uses the **community MLX conversion**, not the original CUDA runner and not
+PyTorch MPS. Its published memory figures are indicative; verify performance on your
+machine before a long video. Its Fish Audio Community License differs from this
+application's MIT license. Qwen3-TTS weights use Apache 2.0. Runtime dependencies and
+models keep their upstream licenses. No VoiceStudio AGPL implementation is vendored.
+See [Drama 3 MLX](https://huggingface.co/mlx-community/fish-audio-drama-3-4bit),
+[Qwen3-TTS MLX](https://huggingface.co/mlx-community/Qwen3-TTS-12Hz-0.6B-Base-4bit)
+and [MLX Audio](https://github.com/Blaizzy/mlx-audio).
+
 
 Model choices, imported absolute paths, download manifests, and progress are private
 runtime state (`modeles.json` and `.modeles-*.json`), excluded from Git. The tests

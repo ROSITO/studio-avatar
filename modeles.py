@@ -18,6 +18,17 @@ MUSE_FILES = ['musetalkV15/unet.pth','musetalkV15/musetalk.json','sd-vae/config.
 CATALOGUE = [dict(id='ltx23-'+bits,nom='LTX-2.3 '+label,role='video',ram=ram,description='Clips et transitions · Apple Silicon · mode distilled',sources=[dict(repo='dgrauet/ltx-2.3-mlx'+suffix,include=VIDEO_FILES+['*.json','LICENSE*'],prefix='')],required=VIDEO_FILES) for bits,label,suffix,ram in [('q4','Q4','-q4',16),('q8','Q8','-q8',32),('bf16','BF16','',64)]]
 CATALOGUE += [dict(id='gemma3',nom='Gemma 3 12B · 4 bits',role='texte',ram=0,description='Encodeur de texte partagé par les trois modèles LTX-2.3.',sources=[dict(repo='mlx-community/gemma-3-12b-it-4bit',include=['*.json','*.safetensors','*.model','LICENSE*'],prefix='')],required=['config.json','tokenizer.json','model.safetensors.index.json','model-00001-of-00002.safetensors','model-00002-of-00002.safetensors']),dict(id='musetalk15',nom='MuseTalk 1.5 · composants',role='lipsync',ram=0,description='Lipsync avec VAE, Whisper, DWPose et analyse du visage. Moteur Python à installer séparément.',required=MUSE_FILES,sources=[dict(repo='TMElyralab/MuseTalk',include=['musetalkV15/*','LICENSE*'],prefix=''),dict(repo='stabilityai/sd-vae-ft-mse',include=['config.json','diffusion_pytorch_model.bin'],prefix='sd-vae'),dict(repo='openai/whisper-tiny',include=['*.json','pytorch_model.bin'],prefix='whisper'),dict(repo='yzd-v/DWPose',include=['dw-ll_ucoco_384.pth'],prefix='dwpose'),dict(repo='ManyOtherFunctions/face-parse-bisent',include=['*.pth'],prefix='face-parse-bisent')])]
 
+# Modèles vocaux autonomes, chargés dans un processus MLX distinct.
+CATALOGUE += [dict(id=mid,nom=nom,role='synthese',ram=ram,description=description,
+    required=required,sources=[dict(repo=repo,include=['*.json','*.safetensors','*.txt','*.jinja','LICENSE*','NOTICE*'],prefix='')])
+    for mid,nom,repo,ram,description,required in [
+      ('qwen3-tts-mlx','Qwen3-TTS 0.6B · MLX 4 bits','mlx-community/Qwen3-TTS-12Hz-0.6B-Base-4bit',8,
+       'Clonage vocal local multilingue · moteur léger Apple Silicon · Apache 2.0.',
+       ['config.json','model.safetensors','speech_tokenizer/model.safetensors','vocab.json','merges.txt']),
+      ('drama3-mlx','Fish Audio Drama 3 · MLX 4 bits','mlx-community/fish-audio-drama-3-4bit',32,
+       'Port communautaire Apple Silicon · environ 24 Go de poids, mémoire élevée · licence Fish Audio Community. À tester avant les vidéos longues.',
+       ['config.json','codec.safetensors','tokenizer.json']+['model-%05d.safetensors'%i for i in range(1,7)])]]
+
 class SansFuiteToken(urllib.request.HTTPRedirectHandler):
     def redirect_request(self,req,fp,code,msg,headers,newurl):
         redirected=super().redirect_request(req,fp,code,msg,headers,newurl)
@@ -59,6 +70,7 @@ class Gestionnaire:
         self.config_path=studio.ICI/'modeles.json'; self.etat_path=studio.ICI/'.modeles-etat.json'
         self.config=lire_json(self.config_path,dict(selection={'video':'ltx23-q4','texte':'gemma3','lipsync':'musetalk15'},locaux=[]))
         self.config['selection'].setdefault('image','flux2-klein4b')
+        self.config['selection'].setdefault('synthese','qwen3-tts-mlx')
         self.etat=lire_json(self.etat_path,{})
         if self.etat.get('statut') in ('analyse','telechargement','verification'): self.etat['statut']='interrompu'
         self.plans=lire_json(studio.ICI/'.modeles-plans.json',{})
@@ -93,7 +105,6 @@ class Gestionnaire:
             for role,mid in self.config['selection'].items():
                 e=self.entry(mid); p=self.path(e)
                 out[role]=dict(id=mid,path=str(p),installe=self.valid(e,p))
-            if self.config.get('voix_engine'): out['voix'] = dict(id=self.config['voix_engine'])
             return out
     def catalogue(self):
         with self.lock:
@@ -103,16 +114,9 @@ class Gestionnaire:
                 entries.append(dict(id=e['id'],nom=e['nom'],role=e['role'],ram=e['ram'],description=e['description'],path=str(p),installe=self.valid(e,p),actif=self.config['selection'].get(e['role'])==e['id'],octets=plan.get('total') if plan else None,sources=[s['repo'] for s in e.get('sources',[])],local=bool(e.get('path'))))
             return dict(catalogue=entries,selection=self.selection(),transfert=self.etat,voix_url=self.s.VOICESTUDIO,moteurs=dict(ltx=bool(shutil.which(str(self.s.LTX))),musetalk=self.muse_root.is_dir(),mflux=bool(getattr(self.s,'MFLUX',None) and (self.s.MFLUX/'mflux-generate-flux2').is_file())),dossier=str(self.s.MODELES))
     def voix_catalogue(self):
-        try:
-            with urllib.request.urlopen(self.s.VOICESTUDIO+'/engines/tts',timeout=3) as r:data=json.load(r)
-            return dict(ok=True,actif=self.config.get('voix_engine') or data.get('active'),modele=data.get('active_model'),engines=[{k:b.get(k) for k in ('id','display_name','available','reason','supports_cloning','supports_voice_design')} for b in data.get('backends',[])])
-        except (OSError,ValueError):return dict(ok=False,engines=[])
+        return self.s.ATELIER_VOIX.catalogue()
     def choisir_voix(self,mid):
-        with self.lock:
-            if any(t['etat'] in ('en attente','en cours') for t in self.s.TACHES): raise ValueError('Terminez les tâches avant de changer de moteur de voix.')
-            data=self.voix_catalogue()
-            if not any(b['id']==mid and b['available'] for b in data['engines']):raise ValueError('Moteur indisponible dans VoiceStudio.')
-            self.config['voix_engine']=mid;atomique(self.config_path,self.config)
+        self.choisir(mid)
     def choisir(self,mid):
         with self.lock:
             if any(t['etat'] in ('en attente','en cours') for t in self.s.TACHES):raise ValueError('Terminez ou annulez les tâches avant de changer de modèle.')
