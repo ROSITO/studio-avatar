@@ -108,10 +108,13 @@ class Atelier:
         if not texte.strip():raise ValueError('Texte vide après retrait des balises non prises en charge.')
         t['memoire']=dict(budget_octets=plafond,reserve_systeme_octets=4*memoire.GIB,mode='essai_borne' if choix['id']=='drama3-mlx' else 'standard')
         req=self.root/(t['id']+'-requete.json');brut=self.root/(t['id']+'-brut.wav');tmp=out.with_suffix('.tmp.wav')
-        req.write_text(json.dumps(dict(texte=texte,moteur=choix['id'],modele=choix['path'],reference=str(self.s.ICI/'references'/profil['reference']),transcription=profil['texte'],langue=langue,seed=int(seed),sortie=str(brut)),ensure_ascii=False))
+        if t.get('type')=='voix_mesure' and choix['id']!='drama3-mlx':raise ValueError('Mesure réservée à Drama 3.')
+        req.write_text(json.dumps(dict(texte=texte,moteur=choix['id'],modele=choix['path'],reference=str(self.s.ICI/'references'/profil['reference']),transcription=profil['texte'],langue=langue,seed=int(seed),sortie=str(brut),optimiser=t.get('params',{}).get('optimiser',True),mesurer_contexte=t.get('type')=='voix_mesure'),ensure_ascii=False))
         try:
             t['etape']='Synthèse vocale locale · '+g.entry(choix['id'])['nom'];self.s.sauver()
             self.s.lancer(t,[python,'-u',self.s.ICI/('lancer_omnivoice.py' if choix['id']=='omnivoice' else 'lancer_voix.py'),req],env={'STUDIO_TTS_EFFECTIVE_LIMIT':str(plafond),'HF_HUB_OFFLINE':'1','TRANSFORMERS_OFFLINE':'1','HF_HOME':str(self.s.MODELES/'huggingface')})
+            if t.get('type')=='voix_mesure':
+                t['resultat']=dict(mesure=json.loads(brut.with_suffix('.json').read_text()));return
             if not brut.is_file() or brut.stat().st_size<44:raise RuntimeError('Le moteur vocal n’a produit aucun audio. Consultez le journal.')
             self.s.lancer(t,['ffmpeg','-v','error','-y','-i',brut,'-ac','1','-ar','44100','-c:a','pcm_s24le',tmp])
             if t.get('annuler'):raise RuntimeError('Tâche annulée')
@@ -132,14 +135,17 @@ class Atelier:
             raise
         finally:
             partiel=audio_partiel.chemin(brut)
-            for f in (req,brut,tmp,partiel.with_suffix('.tmp.wav')):f.unlink(missing_ok=True)
+            for f in (req,brut,brut.with_suffix('.json'),tmp,partiel.with_suffix('.tmp.wav')):f.unlink(missing_ok=True)
             if not t.get('erreur_sauvegarde_partielle'):partiel.unlink(missing_ok=True)
     def essai(self,d):
         profil=self.profil(d.get('profil'));texte=str(d.get('texte','')).strip()
         if not texte or len(texte)>5000:raise ValueError('Saisissez entre 1 et 5000 caractères.')
+        if not isinstance(d.get('mesurer_contexte',False),bool):raise ValueError('mesurer_contexte doit être un booléen.')
+        if not isinstance(d.get('optimiser',True),bool):raise ValueError('optimiser doit être un booléen.')
         seed=d.get('seed')
         if seed is not None and (isinstance(seed,bool) or not isinstance(seed,int) or not 0<=seed<2**31):raise ValueError('Seed vocale : entier entre 0 et 2147483647.')
-        t=dict(id=uuid.uuid4().hex[:12],type='voix',params=dict(profil=profil['id'],texte=texte,langue=profil['langue']),modeles=self.s.GESTION_MODELES.selection(),etat='en attente',cree=time.time())
+        t=dict(id=uuid.uuid4().hex[:12],type='voix_mesure' if d.get('mesurer_contexte') else 'voix',params=dict(profil=profil['id'],texte=texte,langue=profil['langue']),modeles=self.s.GESTION_MODELES.selection(),etat='en attente',cree=time.time())
+        if 'optimiser' in d:t['params']['optimiser']=d['optimiser']
         if seed is not None:t['params']['seed']=seed
         with self.s.VERROU:self.s.TACHES.append(t)
         self.s.sauver()
@@ -147,4 +153,4 @@ class Atelier:
     def executer(self,t):
         p=t['params'];out=self.s.ICI/'audios'/('voix-'+t['id']+'.wav')
         self.generer(t,p['texte'],p['profil'],p['langue'],out,seed=p.get('seed',int(t['id'][:8],16)%2147483648))
-        t['resultat']=dict(fichier=out.name,profil=p['profil'])
+        if t.get('type')!='voix_mesure':t['resultat']=dict(fichier=out.name,profil=p['profil'])

@@ -112,6 +112,25 @@ class VoixIntegreesTest(unittest.TestCase):
         self.assertNotIn('resultat',t)
         self.assertFalse(list(self.atelier.root.glob('*partiel.wav')))
 
+    def test_mesure_contexte_serialisee_sans_faux_audio(self):
+        t=self.atelier.essai(dict(profil=self.profil['id'],texte='Mesure.',mesurer_contexte=True,optimiser=True))
+        self.assertEqual(t['type'],'voix_mesure');self.assertIn(t,studio.TACHES)
+        t['modeles']['synthese']=dict(id='drama3-mlx',path='local',installe=True)
+        profils=self.atelier.lire();profils[0].pop('moteur_origine',None);self.atelier.sauver(profils)
+        python=self.fixture.root/'python';python.touch();self.atelier.python=python
+        report=dict(etats_identiques=True,gain=2)
+        def lancer(task,cmd,env=None):
+            request=json.loads(Path(cmd[-1]).read_text())
+            self.assertTrue(request['mesurer_contexte'])
+            Path(request['sortie']).with_suffix('.json').write_text(json.dumps(report))
+        with patch.object(studio,'lancer',side_effect=lancer):self.atelier.executer(t)
+        self.assertEqual(t['resultat'],dict(mesure=report))
+        self.assertFalse(list((studio.ICI/'audios').glob('voix-*.wav')))
+        self.assertFalse(list(self.atelier.root.glob('*requete.json')))
+        self.assertFalse(list(self.atelier.root.glob('*brut.json')))
+        for field in ('optimiser','mesurer_contexte'):
+            with self.assertRaises(ValueError):self.atelier.essai(dict(profil=self.profil['id'],texte='Mesure.',**{field:1}))
+
     def test_seed_essai_optionnelle_et_bornee(self):
         t=self.atelier.essai(dict(profil=self.profil['id'],texte='Bonjour.',seed=7))
         self.assertEqual(t['params']['seed'],7)

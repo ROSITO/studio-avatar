@@ -179,7 +179,7 @@ def faire(t):
     if t['type'].startswith('projet_'):
         projets.executer(t); return
     if t['type'] == 'animation': ATELIER_ANIMATION.executer(t); return
-    if t['type'] == 'voix': ATELIER_VOIX.executer(t); return
+    if t['type'] in ('voix','voix_mesure'): ATELIER_VOIX.executer(t); return
     if t['type'] == 'portrait': portrait(t); return
     if t['type'] == 'clip':
         src = ICI / 'sources' / p['source']; W, H = resolution(src)

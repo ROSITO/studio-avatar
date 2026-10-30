@@ -77,11 +77,15 @@ def main():
             for nom in ('encode','streaming_step'):
                 setattr(modele.codec,nom,sur_gpu(getattr(modele.codec,nom)))
             import drama_memoire
-            drama_memoire.activer(mx,modele,vue)
+            import drama_experts
+            lecteur_experts=drama_experts.lecteur(plafond,actif=d.get('optimiser',True))
+            drama_memoire.activer(mx,modele,vue,lecteur=lecteur_experts)
             print('GPU : experts sélectionnés uniquement, banques conservées sur disque',flush=True)
         if d['moteur']=='drama3-mlx':
             import drama_cache
             drama_cache.installer(mx,modele,d)
+            import drama_contexte
+            if d.get('optimiser',True):drama_contexte.installer(mx,modele)
             prefill=modele._prefill
             def pre_remplir(frames,caches,debut,fin):
                 print(f'Préparation vocale : {fin-debut} trames',flush=True)
@@ -96,6 +100,9 @@ def main():
                     if i==1 or i%16==0:print(f'Voix : {i} trames générées',flush=True)
                     yield trame
             modele._frames=trames
+        if d.get('mesurer_contexte'):
+            import drama_benchmark
+            drama_benchmark.mesurer(mx,modele,d);return
         print('Génération de la prise',flush=True)
         lang={'fr':'French','en':'English','es':'Spanish','de':'German','it':'Italian','pt':'Portuguese','zh':'Chinese','ja':'Japanese','ko':'Korean'}.get(d['langue'],d['langue'])
         out=Path(d['sortie'])
@@ -105,6 +112,9 @@ def main():
             generate_audio(model=modele,text=d['texte'],ref_audio=d['reference'],ref_text=d['transcription'],lang_code=lang,
                 output_path=str(out.parent),file_prefix=out.stem,audio_format='wav',join_audio=True,play=False,stream=False,max_tokens=limite_drama(d['texte']) if d['moteur']=='drama3-mlx' else 4096,verbose=True)
         if not out.is_file() or out.stat().st_size<44:raise RuntimeError('La synthèse a échoué : aucune prise produite.')
+    if d['moteur']=='drama3-mlx':
+        stats=lecteur_experts.stats;cache=lecteur_experts.cache
+        print(f"Experts : {cache.hits} réutilisés / {cache.hits+cache.misses} recherches ; {stats['octets_lus']/1024**3:.2f} Gio lus ; {stats['secondes_lecture']:.2f} s de lecture/préparation CPU",flush=True)
     print('Prise terminée',flush=True)
 
 if __name__=='__main__':main()

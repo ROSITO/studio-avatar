@@ -31,6 +31,19 @@ class ExpertsDisqueTest(unittest.TestCase):
                     drama_memoire.activer(mx,modele,dossier)
                     obtenu=proj(x,indices,sorted_indices=tries)
                     self.assertTrue(mx.allclose(obtenu,attendu,atol=.02,rtol=.02).item())
+                    import drama_experts
+                    from unittest.mock import patch
+                    with patch.dict('os.environ',{'STUDIO_DRAMA_EXPERT_CACHE_MB':'1','STUDIO_DRAMA_DIRECT_READ':'1'}):
+                        reader=drama_experts.lecteur(12*1024**3)
+                    with patch.object(reader.cache,'verifier',return_value=True):
+                        drama_memoire.activer(mx,modele,dossier,lecteur=reader)
+                        cached=proj(x,indices,sorted_indices=tries)
+                        self.assertTrue(mx.array_equal(cached,obtenu).item())
+                        read_bytes=reader.stats['octets_lus']
+                        again=proj(x,indices,sorted_indices=tries)
+                        self.assertTrue(mx.array_equal(again,cached).item())
+                        self.assertEqual(reader.stats['octets_lus'],read_bytes)
+
         finally:
             QuantizedSwitchLinear.__call__=appel;mx.set_default_device(device);drama3.PREFILL_CHUNK=chunk
 

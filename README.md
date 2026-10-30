@@ -500,3 +500,31 @@ et accessible dans Mes voix. Il ne remplace jamais une prise complète existante
 et ne signifie pas que la génération peut reprendre automatiquement à cet endroit.
 Les anciennes prises interrompues avant cette correction n’ont pas de snapshot
 récupérable.
+
+### Drama expert reads and repeated context
+
+Drama keeps its large expert banks on disk. By default, selected rows are now
+read directly into bounded NumPy buffers using positional file reads, with file
+descriptors reused throughout the worker. This avoids mapping entire banks and
+the previous extra NumPy copy. It does not preload the model, raise the worker's
+memory ceiling, or change routing, quantization, speech directions, or seeds.
+`STUDIO_DRAMA_DIRECT_READ=0` restores the temporary-mapping reader for comparison.
+
+Repeated first-turn context is reused only when every prefix frame matches,
+including the teacher-forcing lookahead. Snapshots are limited to 256 MiB.
+`STUDIO_DRAMA_CONTEXT_CACHE=0` disables this optimization. A local real-model
+prefill benchmark measured 191.72 s cold versus 48.64 s with reuse, with identical
+hidden states and cache states. This is a preparation benchmark, **not** an
+end-to-end speech speedup claim. The normal serialized task queue and memory
+supervisor also apply to diagnostic measurements.
+
+The optional CPU expert-row cache remains **off by default**. In one local
+same-text/same-seed trial, a 768 MiB cache reduced reads from 33.10 to 22.67 GiB
+but increased total time from 167.99 to 198.71 s. For controlled experiments only,
+`STUDIO_DRAMA_EXPERT_CACHE_MB` accepts 0–1024 MiB and is additionally capped at
+one sixteenth of the worker budget. Memory pressure clears cached rows.
+
+The direct reader passed exact row and FP32/BF16 quantized-kernel comparisons.
+A small warm-file microbenchmark measured 0.56 ms versus 1.01 ms per 4 MiB read;
+this does not predict full-generation time under memory pressure. Changes apply
+to newly started workers; an active generation is never restarted to apply them.

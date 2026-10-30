@@ -3,7 +3,7 @@ import json
 import struct
 from pathlib import Path
 
-def activer(mx,modele,dossier):
+def activer(mx,modele,dossier,lecteur=None):
     import numpy as np
     from mlx_audio.lm.models.switch_layers import QuantizedSwitchLinear
     if not mx.metal.is_available():return
@@ -31,13 +31,17 @@ def activer(mx,modele,dossier):
         uniques,inverse=np.unique(np.asarray(indices),return_inverse=True)
         with mx.stream(mx.cpu):
             buffers={}
-            for cle,(description,dtype) in sources[id(self)].items():
-                fichier,type_numpy,decalage,forme=description
-                banque=np.memmap(fichier,mode='r',dtype=type_numpy,offset=decalage,shape=forme)
-                try:
-                    copie=np.array(banque[uniques],copy=True)
-                finally:
-                    banque._mmap.close()
+            if lecteur is not None:
+                copies=lecteur(sources[id(self)],uniques,id(self))
+            else:
+                copies={}
+                for cle,(description,dtype) in sources[id(self)].items():
+                    fichier,type_numpy,decalage,forme=description
+                    banque=np.memmap(fichier,mode='r',dtype=type_numpy,offset=decalage,shape=forme)
+                    try:copies[cle]=np.array(banque[uniques],copy=True)
+                    finally:banque._mmap.close()
+            for cle,copie in copies.items():
+                dtype=sources[id(self)][cle][1]
                 valeur=mx.array(copie)
                 buffers[cle]=valeur.view(dtype) if valeur.dtype!=dtype else valeur
             mx.eval(buffers)
