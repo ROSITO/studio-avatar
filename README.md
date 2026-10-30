@@ -332,14 +332,15 @@ is still needed; using the same model does not guarantee bit-identical takes.
 
 ### Voice memory protection
 
-Speech has a default 16 GiB budget, never above half of physical RAM. Set
+Speech has a default 12 GiB budget, never above half of physical RAM. Set
 `STUDIO_TTS_MAX_RAM_GB` to lower it. Admission checks run before model loading:
 standard model estimates must fit the budget, macOS memory pressure must be normal, and
 available RAM must cover the estimate plus a 4 GiB reserve. Drama 3's conservative
 28 GiB estimate is informational: Drama 3 is admitted as a bounded experiment,
-not rejected solely for its model size. Its effective budget is the smaller of
-the configured budget and currently available RAM minus a 4 GiB system reserve.
-At least 2 GiB must remain for the trial. A bounded trial may stop before producing
+not rejected solely for its model size. It retains the configured budget instead of shrinking it to a snapshot of
+currently available memory. Admission requires at least 4 GiB currently available
+and a non-critical macOS memory pressure level; the live watchdog retains its
+pressure and reserve checks. At least 2 GiB must be configured for the trial. A bounded trial may stop before producing
 audio if the model cannot run within the available memory.
 The MLX cache is limited to 256 MiB; MPS synthesis configures PyTorch's allocator
 fraction. An isolated watchdog checks resident memory and macOS pressure every
@@ -479,3 +480,12 @@ format que `/api/animation`, mais une seule étape et une résolution réduite.
 Son budget minimal est de 2 Gio, toujours avec une réserve système de 4 Gio et
 le superviseur. Il sert à vérifier le moteur complet, pas à évaluer la qualité ;
 les tâches et résultats portent explicitement cette mention.
+
+
+Le budget vocal par défaut est également de **12 Gio**
+(`STUDIO_TTS_MAX_RAM_GB`, plafond maximal : moitié de la RAM physique).
+Drama conserve ce plafond configuré au lieu de le réduire à l’estimation de
+mémoire disponible moins 4 Gio. L’admission refuse moins de 4 Gio disponibles
+ou une pression critique ; le superviseur extérieur conserve ses arrêts sur
+empreinte excessive et pression macOS. La limite transmise au processus enfant
+reste la même, même si l’estimation de mémoire disponible fluctue.

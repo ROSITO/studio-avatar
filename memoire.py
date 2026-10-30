@@ -16,7 +16,7 @@ def physique():
     except (OSError,ValueError,subprocess.SubprocessError):return 16*GIB
 
 def budget():
-    try:limite=float(os.environ.get('STUDIO_TTS_MAX_RAM_GB','16'))
+    try:limite=float(os.environ.get('STUDIO_TTS_MAX_RAM_GB','12'))
     except ValueError:raise ValueError('STUDIO_TTS_MAX_RAM_GB doit être un nombre positif.')
     if not 0<limite<=1024:raise ValueError('Budget vocal invalide.')
     plafond=int(min(limite*GIB,physique()/2))
@@ -42,9 +42,9 @@ def verifier(moteur):
     plafond=budget();besoin=BESOINS[moteur]
     if moteur=='drama3-mlx':
         if pression()>=4:raise ValueError('Pression mémoire macOS critique : essai refusé.')
-        effectif=min(plafond,int(disponible()-4*GIB))
-        if effectif<2*GIB:raise ValueError('Moins de 2 Go disponibles pour un essai après la réserve système de 4 Go.')
-        return effectif
+        if disponible()<4*GIB:raise ValueError('Moins de 4 Gio disponibles : attendez avant de lancer la synthèse.')
+        if plafond<2*GIB:raise ValueError('Budget vocal inférieur à 2 Gio : augmentez STUDIO_TTS_MAX_RAM_GB.')
+        return plafond
     if besoin>plafond:raise ValueError(f'{moteur} : environ {besoin/GIB:.0f} Go nécessaires, budget vocal {plafond/GIB:.0f} Go. Modèle refusé avant chargement pour préserver les applications.')
     if pression()>=2:raise ValueError('macOS signale une pression mémoire : synthèse vocale refusée pour préserver les applications.')
     if disponible()<besoin+4*GIB:raise ValueError('Mémoire disponible insuffisante : il faut garder au moins 4 Go de marge en plus du modèle vocal.')

@@ -12,9 +12,17 @@ class BudgetMemoireTest(unittest.TestCase):
         with patch.dict(os.environ,{'STUDIO_TTS_MAX_RAM_GB':'16'}),patch.object(memoire,'physique',return_value=36*memoire.GIB),patch.object(memoire,'disponible',return_value=24*memoire.GIB),patch.object(memoire,'pression',return_value=1):
             self.assertEqual(memoire.configurer_mlx(mx,'drama3-mlx'),16*memoire.GIB)
         mx.set_memory_limit.assert_called_once_with(16*memoire.GIB)
-    def test_drama_reserve_quatre_gio_aux_applications(self):
+    def test_drama_garde_plafond_configure_et_surveille_reserve(self):
         with patch.object(memoire,'budget',return_value=16*memoire.GIB),patch.object(memoire,'disponible',return_value=10*memoire.GIB),patch.object(memoire,'pression',return_value=1):
-            self.assertEqual(memoire.verifier('drama3-mlx'),6*memoire.GIB)
+            self.assertEqual(memoire.verifier('drama3-mlx'),16*memoire.GIB)
+    def test_drama_refuse_sans_reserve_ou_en_pression_critique(self):
+        with patch.object(memoire,'budget',return_value=12*memoire.GIB),patch.object(memoire,'disponible',return_value=3*memoire.GIB),patch.object(memoire,'pression',return_value=1):
+            with self.assertRaisesRegex(ValueError,'4 Gio'):memoire.verifier('drama3-mlx')
+        with patch.object(memoire,'budget',return_value=12*memoire.GIB),patch.object(memoire,'pression',return_value=4):
+            with self.assertRaisesRegex(ValueError,'critique'):memoire.verifier('drama3-mlx')
+    def test_drama_child_keeps_transmitted_cap(self):
+        with patch.dict(os.environ,{'STUDIO_TTS_MAX_RAM_GB':'16','STUDIO_TTS_EFFECTIVE_LIMIT':str(12*memoire.GIB)}),patch.object(memoire,'physique',return_value=36*memoire.GIB),patch.object(memoire,'disponible',return_value=6*memoire.GIB),patch.object(memoire,'pression',return_value=1):
+            self.assertEqual(memoire.verifier('drama3-mlx'),12*memoire.GIB)
     def test_superviseur_externe_tue_uniquement_enfant(self):
         import io
         child=subprocess.Popen([sys.executable,'-c','import time; time.sleep(5)'])
