@@ -42,14 +42,14 @@ assert.equal(context.raccordIntegre(mp,{gauche:'a',duree:.5}).coupe,44);
 assert.equal(context.raccordIntegre(mp,{gauche:'a',duree:.5}).frames,12);
 
 p=parse('$ python lancer_animation.py request.json\nPréparation disque : transformer/shard.safetensors');
-assert.equal(p.pourcent,null);assert.match(p.label,/couches sur disque/);
+assert.equal(p.pourcent,0);assert.match(p.label,/couches sur disque/);
 p=parse('$ python lancer_animation.py request.json\nAnimation Wan : étape 8/40');
 assert.equal(p.pourcent,20);assert.equal(p.fait,8);assert.equal(p.total,40);
 p=parse('$ python lancer_animation.py request.json\nAnimation Wan : étape 40/40\nEncodage vidéo');
-assert.equal(p.pourcent,null);assert.equal(p.label,'Encodage vidéo');
+assert.equal(p.pourcent,99);assert.equal(p.label,'Encodage vidéo');
 
 p=parse('Animation Wan : étape 40/40\n[Wan] Décodage du mouvement');
-assert.equal(p.pourcent,null);assert.equal(p.label,'Décodage du mouvement');
+assert.equal(p.pourcent,99);assert.equal(p.label,'Décodage du mouvement');
 p=parse('[Wan] Encodage du texte terminé\nAnimation Wan : étape 2/40');assert.equal(p.pourcent,5);
 // Audio progress survives a truncated journal and never promises completion early.
 p=context.analyserProgression('Voix progression : 67% · bloc 5/6\nPréparation vocale : 818 trames','Audio',{type:'voix'});
@@ -60,3 +60,10 @@ p=context.analyserProgression('Audio décodé : 999.00 s','Audio',{type:'voix',p
 p=context.analyserProgression('Voix progression : 100% · bloc 6/6','Audio',{type:'voix'});assert.equal(p.pourcent,99);
 p=context.analyserProgression('Voix progression : 90% · bloc 6/6\n$ ffmpeg -i brut.wav final.wav','Audio',{type:'voix'});assert.equal(p.pourcent,99);assert.match(p.label,/Enregistrement/);
 p=context.analyserProgression('Chargement du modèle vocal local','Audio',{type:'voix'});assert.equal(p.pourcent,null);
+// Wan exposes tqdm's zero BEFORE its first completed callback; later phase
+// messages must not hide its measured percentage. Aggregate multiple segments.
+p=parse('$ python lancer_animation.py\nSegment 1/1:   0%|          | 0/40 [00:00<?, ?it/s][Wan] Animation de l’avatar');
+assert.equal(p.pourcent,0);assert.equal(p.total,40);assert.match(p.label,/avatar/);
+p=parse('Segment 2/3:  50%|████ | 20/40 [00:20<00:20, 1s/it]');assert.equal(p.pourcent,50);assert.equal(p.fait,60);assert.equal(p.total,120);
+p=parse('[Wan] Encodage du texte');assert.equal(p.pourcent,0);assert.match(p.detail,/Préparation/);
+p=parse('Animation Wan : étape 40/40\n[Wan] Décodage du mouvement');assert.equal(p.pourcent,99);assert.match(p.label,/Décodage/);

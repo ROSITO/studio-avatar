@@ -821,13 +821,21 @@ function analyserProgression(texte, etape='Préparation', tache={}) {
   const commande=texte.lastIndexOf('\n$ ');
   const log=commande>=0?texte.slice(commande+1):texte;
   if(log.includes('lancer_animation.py')||log.includes('Animation Wan : étape')||log.includes('Index des couches :')||log.includes('[Wan]')) {
-    if(log.includes('Encodage vidéo'))return {label:'Encodage vidéo',pourcent:null};
+    if(log.includes('Encodage vidéo'))return {label:'Encodage vidéo',pourcent:99,portee:'du calcul'};
     const wan=[...log.matchAll(/Animation Wan : étape (\d+)\/(\d+)/g)].at(-1);
+    const segment=[...log.matchAll(/Segment (\d+)\/(\d+):\s*\d+%[^\r\n]*?\|\s*(\d+)\/(\d+)\s*\[([^\]]*)\]/g)].at(-1);
     const phase=[...log.matchAll(/\[Wan\] ([^\r\n]+)/g)].at(-1);
-    if(phase&&(!wan||phase.index>wan.index))return {label:phase[1],pourcent:null};
-    if(wan)return {label:'Animation Wan · segment en cours',fait:+wan[1],total:+wan[2],pourcent:Math.min(100,Math.round(100*wan[1]/wan[2]))};
+    if(phase&&/Décodage du mouvement/.test(phase[1]))return {label:phase[1],pourcent:99,portee:'du calcul'};
+    if(segment) {
+      const fait=(+segment[1]-1)*(+segment[4])+(+segment[3]),total=(+segment[2])*(+segment[4]);
+      return {label:phase&&phase.index>segment.index?phase[1]:'Animation de l’avatar',fait,total,
+        pourcent:Math.min(99,Math.floor(100*fait/total)),portee:'du calcul',detail:`Segment ${segment[1]} / ${segment[2]}`,
+        restant:segment[5].match(/<([\d:]+)/)?.[1]};
+    }
+    if(wan)return {label:'Animation de l’avatar',fait:+wan[1],total:+wan[2],pourcent:Math.min(99,Math.floor(100*wan[1]/wan[2])),portee:'du segment'};
+    if(phase)return {label:phase[1],pourcent:0,portee:'du calcul',detail:'Préparation avant les étapes de génération'};
     const prep=[...log.matchAll(/(?:Préparation disque|Index des couches) : ([^\r\n]+)/g)].at(-1);
-    return {label:prep?'Préparation des couches sur disque · '+prep[1]:'Chargement Wan-Animate-2',pourcent:null};
+    return {label:prep?'Préparation des couches sur disque · '+prep[1]:'Chargement Wan-Animate-2',pourcent:0,portee:'du calcul',detail:'Préparation avant les étapes de génération'};
   }
   if(tache.type==='voix'&&/^\$ .*ffmpeg/.test(log))return {label:'Enregistrement de l’audio',pourcent:99,estime:true};
   const voix=[...log.matchAll(/Voix progression : (\d+)% · bloc (\d+)\/(\d+)/g)].at(-1);
@@ -900,7 +908,7 @@ function progressionHTML(t,actions=true) {
   const attente=t.etat==='en attente', age=s?Math.floor((Date.now()-s.change)/1000):null;
   const ecoule=t.debut?Math.max(0,Date.now()/1000-t.debut):0;
   const titre=({voix:'Audio',animation:'Transfert de performance',projet_clip:'Mini-clip',projet_pont:'Transition',projet_export:'Vidéo finale',projet_auto:'Génération automatique',video:'Vidéo',clip:'Mouvement',pont:'Transition',lipsync:'Synchronisation labiale'})[t.type]||'Génération';
-  return `<div class="suivi-calcul" role="status"><div class="suivi-entete"><strong>${titre} · ${esc(attente?'En attente':p.label)}</strong><span>${!attente&&p.pourcent!=null?(p.estime?'≈ ':'')+p.pourcent+(p.estime?' % estimés':' % de la passe'):''}</span></div><div class="barre ${attente||p.pourcent==null?'indeterminee':''}" role="progressbar" aria-label="${esc(attente?'En attente':p.label)}" aria-valuemin="0" aria-valuemax="100" ${!attente&&p.pourcent!=null?`aria-valuenow="${p.pourcent}"`:''}><div style="width:${p.pourcent??35}%"></div></div><div class="suivi-details">${t.automatique?`${t.automatique.faits} / ${t.automatique.total} éléments terminés · ${esc(t.etape||'')}<br>`:''}${attente?'La tâche démarrera après le calcul en cours.':`${p.detail?esc(p.detail)+' · ':''}${p.fait!=null?`${p.fait} / ${p.total} étapes · `:''}${minsec(ecoule)} écoulées${p.restant?' · reste ≈ '+esc(p.restant)+' pour cette passe':''}`}</div>${!attente?`<div class="suivi-activite">${age==null?'Connexion au journal du moteur…':age<10?'● Nouvelle sortie du moteur reçue':`Dernière sortie reçue il y a ${minsec(age)}${age>=120?' · cette étape peut être silencieuse':''}`}</div>`:''}${actions?`<div class="suivi-actions">${t.params.projet?`<button class="sec petit" onclick="page('projets');ouvrirProjet('${js(t.params.projet)}')">Voir la timeline</button>`:''}<button class="sec petit" onclick="annuler('${t.id}')">Annuler</button></div>`:''}</div>`;
+  return `<div class="suivi-calcul" role="status"><div class="suivi-entete"><strong>${titre} · ${esc(attente?'En attente':p.label)}</strong><span>${!attente&&p.pourcent!=null?(p.estime?'≈ ':'')+p.pourcent+(p.estime?' % estimés':' % '+(p.portee||'de la passe')):''}</span></div><div class="barre ${attente||p.pourcent==null?'indeterminee':''}" role="progressbar" aria-label="${esc(attente?'En attente':p.label)}" aria-valuemin="0" aria-valuemax="100" ${!attente&&p.pourcent!=null?`aria-valuenow="${p.pourcent}"`:''}><div style="width:${p.pourcent??35}%"></div></div><div class="suivi-details">${t.automatique?`${t.automatique.faits} / ${t.automatique.total} éléments terminés · ${esc(t.etape||'')}<br>`:''}${attente?'La tâche démarrera après le calcul en cours.':`${p.detail?esc(p.detail)+' · ':''}${p.fait!=null?`${p.fait} / ${p.total} étapes · `:''}${minsec(ecoule)} écoulées${p.restant?' · reste ≈ '+esc(p.restant)+' pour cette passe':''}`}</div>${!attente?`<div class="suivi-activite">${age==null?'Connexion au journal du moteur…':age<10?'● Nouvelle sortie du moteur reçue':`Dernière sortie reçue il y a ${minsec(age)}${age>=120?' · cette étape peut être silencieuse':''}`}</div>`:''}${actions?`<div class="suivi-actions">${t.params.projet?`<button class="sec petit" onclick="page('projets');ouvrirProjet('${js(t.params.projet)}')">Voir la timeline</button>`:''}<button class="sec petit" onclick="annuler('${t.id}')">Annuler</button></div>`:''}</div>`;
 }
 function afficherProgressions() {
   const actives=E.taches.filter(t=>t.etat==='en cours'), attente=E.taches.filter(t=>t.etat==='en attente');
