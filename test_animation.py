@@ -182,6 +182,8 @@ class TransformerTests(unittest.TestCase):
                 module.save_pretrained(tmp/name)
                 components[name]=charger_disque(type(module),tmp/name,tmp/('disk-'+name),'mps')
             pipe=WanAnimate2Pipeline(**components,tokenizer=tokenizer,scheduler=DPMSolverMultistepScheduler())
+            from animation_texte import installer as optimiser_texte
+            optimiser_texte(pipe)
             out=pipe(image=Image.new('RGB',(64,64),'gray'),driving_video=str(tmp/'drive.mp4'),prompt='A cat.',height=64,width=64,
                 clip_len=5,num_inference_steps=1,guidance_scale=1,max_sequence_length=8,seed=1,generator=torch.Generator().manual_seed(1))
             self.assertEqual(out.frames[0].shape[0],5)

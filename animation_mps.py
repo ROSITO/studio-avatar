@@ -5,6 +5,7 @@ Triton, complex tensors, float64, torch.compile or full dense attention mask.
 The pretrained model is unchanged; this remains an experimental execution port.
 """
 import math
+import os
 import torch
 import torch.nn.functional as F
 
@@ -51,12 +52,22 @@ def _attention(q,k,v,q_lens=None,k_lens=None,mask_mod=None,score_mod=None,scale=
     if k.shape[2] != heads: raise ValueError('Grouped query attention is not supported by this port.')
     out = torch.zeros((*q.shape[:-1],v.shape[-1]),device=q.device,dtype=q.dtype)
     ki = torch.arange(keys,device=q.device)[None,:]
+    # Larger tiles reduce Metal dispatch overhead. Bound each score block to
+    # 16 MiB (the backend may need additional workspace), rather than allocating
+    # a full quadratic attention matrix. The previous 64x4 tiles remain available
+    # for controlled comparisons.
+    legacy = os.environ.get('STUDIO_WAN_ATTENTION_LEGACY', '0') == '1'
+    query_chunk = 64 if legacy else max(1, min(256, queries))
+    score_bytes = max(4, q.element_size())
+    head_chunk = 4 if legacy else max(1, min(heads, (16*1024**2)//max(1,query_chunk*keys*score_bytes)))
+    if not legacy and query_chunk*keys*score_bytes > 16*1024**2:
+        query_chunk = max(1,(16*1024**2)//(keys*score_bytes))
     # Keep logits/masks bounded independently of the full number of tokens.
     for b in range(batch):
         qlimit = int(q_lens[b]) if q_lens is not None else queries
         klimit = int(k_lens[b]) if k_lens is not None else keys
-        for start in range(0,qlimit,64):
-            end = min(start+64,qlimit)
+        for start in range(0,qlimit,query_chunk):
+            end = min(start+query_chunk,qlimit)
             qi = torch.arange(start,end,device=q.device)[:,None]
             allowed = (ki < klimit).expand(end-start,keys)
             if mask_mod is not None: allowed = allowed & mask_mod(b,0,qi,ki)
@@ -68,10 +79,10 @@ def _attention(q,k,v,q_lens=None,k_lens=None,mask_mod=None,score_mod=None,scale=
             bias = torch.zeros((end-start,keys),device=q.device,dtype=q.dtype)
             if score_mod is not None: bias=score_mod(bias,b,0,qi,ki)
             bias=bias.masked_fill(~allowed,float('-inf'))
-            for h in range(0,heads,4):
-                value=F.scaled_dot_product_attention(q[b:b+1,start:end,h:h+4].transpose(1,2),
-                    k[b:b+1,:,h:h+4].transpose(1,2),v[b:b+1,:,h:h+4].transpose(1,2),attn_mask=bias,scale=scale)
-                out[b:b+1,start:end,h:h+4]=value.transpose(1,2)
+            for h in range(0,heads,head_chunk):
+                value=F.scaled_dot_product_attention(q[b:b+1,start:end,h:h+head_chunk].transpose(1,2),
+                    k[b:b+1,:,h:h+head_chunk].transpose(1,2),v[b:b+1,:,h:h+head_chunk].transpose(1,2),attn_mask=bias,scale=scale)
+                out[b:b+1,start:end,h:h+head_chunk]=value.transpose(1,2)
     return out
 
 

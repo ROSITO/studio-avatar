@@ -114,6 +114,8 @@ def main(request):
             tokenizer=T5TokenizerFast.from_pretrained(model/'tokenizer',local_files_only=True),
             scheduler=DPMSolverMultistepScheduler.from_pretrained(model/'scheduler',local_files_only=True))
         pipe.vae.enable_tiling()
+        from animation_texte import installer as optimiser_texte
+        optimiser_texte(pipe)
         def trace_phase(obj,method,label):
             original=getattr(obj,method)
             def wrapped(*args,**kwargs):

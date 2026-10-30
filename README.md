@@ -556,3 +556,36 @@ synchronization and identical output hashes. This benchmark uses about 105 MiB
 of active allocations and a 256 MiB allocator limit. It excludes weight reads
 and speech generation; it does **not** establish an end-to-end speedup. The
 small additional residency result is insufficient to enable residency by default.
+
+### Wan MPS execution optimizations
+
+New animation workers retain the same FP32 computation, output resolution,
+40 denoising steps, guidance, and driving-video frames. Two changes reduce
+avoidable work:
+
+- Attention uses adaptive query/head tiles instead of fixed 64-query/4-head
+  tiles. Each explicit score tile targets at most 16 MiB; backend workspace and
+  the rest of the pipeline remain covered by the existing worker supervisor.
+  `STUDIO_WAN_ATTENTION_LEGACY=1` restores the old tiling for comparison.
+- T5 removes only trailing positions masked for the entire prompt batch before
+  encoding, then restores the original padded output shape. Identical tokenized
+  prompts reuse embeddings within the same pipeline, with at most four entries
+  and 32 MiB of CPU tensor data. This avoids encoding identical empty negative
+  and reference prompts twice. No model weights are cached or preloaded.
+  `STUDIO_WAN_TEXT_OPTIMIZE=0` restores the native text encoder path.
+
+Tests compare adaptive attention to the previous implementation on CPU/MPS and
+trimmed embeddings to a real tiny UMT5 encoder. The tiny end-to-end pipeline
+with disk offload, motion/reference caches and video export also passes.
+
+```sh
+.venv-animation/bin/python -m unittest test_animation test_animation_optimisation -v
+.venv-animation/bin/python tools/benchmark_wan_attention.py
+```
+
+A local M3 Pro attention microbenchmark (768 tokens, 40 heads) measured 17.92 ms
+with the old tiling versus 3.54 ms adaptively, about 5.1x faster, within the tested
+numerical tolerance. This is **not** a full-model speed or quality benchmark.
+Disk offload of the 14B model is still expensive; practical full-quality runtime
+on a 36 GiB Mac has not been established. These optimizations alone do not
+establish that multi-second video generation will finish in minutes.
