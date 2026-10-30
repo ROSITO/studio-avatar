@@ -34,6 +34,17 @@ CATALOGUE += [dict(id='omnivoice',nom='OmniVoice · moteur original des voix imp
     required=['config.json','model.safetensors','tokenizer.json','audio_tokenizer/config.json','audio_tokenizer/model.safetensors','audio_tokenizer/preprocessor_config.json'],
     sources=[dict(repo='k2-fsa/OmniVoice',include=['*.json','*.safetensors','*.jinja','LICENSE*'],prefix='')])]
 
+# Experimental video-driven animation; explicit download only, no remote code in weights.
+CATALOGUE += [dict(id='wan-animate2', nom='Wan-Animate-2 · transfert de performance', role='animation', ram=32,
+    description='Expérimental · environ 46 Go de poids. Photo + vidéo de jeu. Port MPS en validation, essais courts et mémoire surveillée. Apache 2.0.',
+    required=['model_index.json','tokenizer/tokenizer_config.json','tokenizer/spiece.model','text_encoder/config.json',
+              'text_encoder/model.safetensors.index.json','image_encoder/model.safetensors','vae/diffusion_pytorch_model.safetensors',
+              'transformer/config.json','transformer/diffusion_pytorch_model.safetensors.index.json'] +
+             ['transformer/diffusion_pytorch_model-%05d-of-00004.safetensors'%i for i in range(1,5)] +
+             ['text_encoder/model-%05d-of-00003.safetensors'%i for i in range(1,4)],
+    sources=[dict(repo='Wan-AI/Wan2.2-Animate-2-14B-Diffusers',
+                  include=['*.json','*.safetensors','*.model','*.txt','LICENSE*','NOTICE*'], prefix='')])]
+
 class SansFuiteToken(urllib.request.HTTPRedirectHandler):
     def redirect_request(self,req,fp,code,msg,headers,newurl):
         redirected=super().redirect_request(req,fp,code,msg,headers,newurl)

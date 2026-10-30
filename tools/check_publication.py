@@ -4,7 +4,7 @@ import subprocess
 
 root = Path(__file__).resolve().parents[1]
 files = subprocess.check_output(['git', 'ls-files', '-z'], cwd=root).decode().split('\0')
-private_dirs = {'voix', 'sources', 'audios', 'clips', 'ponts', 'sequences', 'lipsync', 'videos', 'projets', 'taches', 'models'}
+private_dirs = {'performances', 'voix', 'sources', 'audios', 'clips', 'ponts', 'sequences', 'lipsync', 'videos', 'projets', 'taches', 'models'}
 errors = []
 for name in filter(None, files):
     p = Path(name)

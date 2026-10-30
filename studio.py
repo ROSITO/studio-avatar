@@ -20,7 +20,7 @@ VOICESTUDIO = os.environ.get('STUDIO_VOICE_URL', 'http://127.0.0.1:3900').rstrip
 PORT = int(os.environ.get('STUDIO_PORT', '8765'))
 MFLUX = Path(os.environ.get('STUDIO_MFLUX_BIN', str(Path(sys.executable).parent))).expanduser()   # dossier des commandes mflux-generate-*
 MODELES_IMAGE = Path(os.environ['STUDIO_IMAGE_MODELS_DIR']).expanduser() if os.environ.get('STUDIO_IMAGE_MODELS_DIR') else None   # poids FLUX déjà installés ailleurs
-DOSSIERS = ['sources', 'audios', 'clips', 'ponts', 'sequences', 'lipsync', 'videos', 'portraits', 'references']
+DOSSIERS = ['sources', 'audios', 'clips', 'ponts', 'sequences', 'lipsync', 'videos', 'portraits', 'references', 'performances']
 for d in DOSSIERS: (ICI / d).mkdir(exist_ok=True)
 
 # Recettes validées sur la vidéo VoiceStudio (19/10/2026)
@@ -126,13 +126,13 @@ def lancer(t, cmd, env=None):
         p = subprocess.Popen([str(c) for c in cmd], stdout=log, stderr=subprocess.STDOUT, env={**os.environ, **(env or {})}, cwd=ICI)
         EN_COURS['proc'] = p
         try:
-            if env and env.get('STUDIO_TTS_EFFECTIVE_LIMIT'):
+            if env and (env.get('STUDIO_TTS_EFFECTIVE_LIMIT') or env.get('STUDIO_ANIMATION_EFFECTIVE_LIMIT')):
                 import memoire
-                code=memoire.attendre(p,int(env['STUDIO_TTS_EFFECTIVE_LIMIT']),log)
+                code=memoire.attendre(p,int(env.get('STUDIO_ANIMATION_EFFECTIVE_LIMIT') or env['STUDIO_TTS_EFFECTIVE_LIMIT']),log)
             else:code=p.wait()
         finally:EN_COURS['proc'] = None
     if t.get('annuler'): raise RuntimeError('Tâche annulée')
-    if code==73: raise RuntimeError('Protection mémoire : synthèse arrêtée pour préserver les applications.')
+    if code==73: raise RuntimeError('Protection mémoire : calcul arrêté pour préserver les applications.')
     if code: raise RuntimeError(f'commande terminée avec le code {code} (voir le journal)')
 
 def ltx(t, images, prompt, W, H, frames, seed, sortie, audio=None):
@@ -176,6 +176,7 @@ def faire(t):
     if 'modeles' not in t: t['modeles'] = GESTION_MODELES.selection()
     if t['type'].startswith('projet_'):
         projets.executer(t); return
+    if t['type'] == 'animation': ATELIER_ANIMATION.executer(t); return
     if t['type'] == 'voix': ATELIER_VOIX.executer(t); return
     if t['type'] == 'portrait': portrait(t); return
     if t['type'] == 'clip':
@@ -434,9 +435,9 @@ def fichiers():
     for d in DOSSIERS:
         l = []
         for f in sorted((ICI / d).iterdir(), key=lambda f: -f.stat().st_mtime):
-            if f.name.startswith(('.', 'fin-')) or f.suffix in ('.json', '.jpg') or '.tmp.' in f.name or f.name.endswith('-16k.wav') or '-25fps' in f.name: continue
+            if not f.is_file() or f.name.startswith(('.', 'fin-')) or f.suffix in ('.json', '.jpg') or '.tmp.' in f.name or f.name.endswith('-16k.wav') or '-25fps' in f.name: continue
             m = f.with_suffix('.json'); l.append(dict(nom=f.name, meta=json.loads(m.read_text()) if m.exists() else {},
-                                                  apercu=f.with_suffix('.jpg').exists(), duree=round(duree_cache(f), 2) if f.suffix in ('.mp4', '.wav', '.mp3', '.m4a') else None))
+                                                  apercu=f.with_suffix('.jpg').exists(), duree=round(duree_cache(f), 2) if f.suffix in ('.mp4', '.mov', '.m4v', '.webm', '.wav', '.mp3', '.m4a') else None))
         out[d] = l
     return out
 
@@ -457,6 +458,7 @@ class H(BaseHTTPRequestHandler):
         if u.path == '/api/modeles/voix': return self.json(GESTION_MODELES.voix_catalogue())
         if u.path == '/api/modeles': return self.json(GESTION_MODELES.catalogue())
         if u.path == '/api/projets': return self.json(projets.liste())
+        if u.path == '/api/animation': return self.json(ATELIER_ANIMATION.etat())
         if u.path == '/api/voix': return self.json(ATELIER_VOIX.liste())
         if u.path.startswith('/api/journal/'):
             f = ICI / 'taches' / f"{nom_sur(u.path.rsplit('/', 1)[1])}.log"
@@ -487,12 +489,21 @@ class H(BaseHTTPRequestHandler):
             except (BrokenPipeError, ConnectionResetError): pass
     def do_PUT(self):
         u = urlparse(self.path); q = parse_qs(u.query)
-        if u.path == '/api/envoi' and q.get('dossier', [''])[0] in ('sources', 'audios', 'references'):
+        if u.path == '/api/envoi' and q.get('dossier', [''])[0] in ('sources', 'audios', 'references', 'performances'):
+            if q['dossier'][0]=='performances':
+                name=q.get('nom',[''])[0]
+                size=int(self.headers.get('Content-Length',0))
+                if not 0<size<=1024**3 or Path(name).suffix.lower() not in ('.mp4','.mov','.m4v','.webm'):
+                    self.close_connection=True
+                    return self.json(dict(erreur='Vidéo MP4, MOV ou WebM de 1 Go maximum requise.'),400)
             n = nom_sur(q['nom'][0]); (ICI / q['dossier'][0] / n).write_bytes(self.corps())
             return self.json(dict(nom=n))
         self.send_error(400)
     def do_POST(self):
         u = urlparse(self.path); d = json.loads(self.corps() or b'{}')
+        if u.path in ('/api/animation','/api/animation/diagnostic'):
+            try: return self.json(ATELIER_ANIMATION.demander(d,diagnostic=u.path.endswith('/diagnostic')))
+            except (ValueError, OSError, KeyError) as e: return self.json(dict(erreur=str(e)),400)
         if u.path.startswith('/api/voix/'):
             try:
                 action=u.path.rsplit('/',1)[1]
@@ -560,10 +571,12 @@ import projets
 import modeles
 import apercus
 import voix as voix_locale
+import animation
 apercus.installer(sys.modules[__name__])
 GESTION_MODELES = modeles.Gestionnaire(sys.modules[__name__])
 projets.installer(sys.modules[__name__])
 ATELIER_VOIX = voix_locale.Atelier(sys.modules[__name__])
+ATELIER_ANIMATION = animation.Atelier(sys.modules[__name__])
 
 if __name__ == '__main__':
     threading.Thread(target=travailleur, daemon=True).start()

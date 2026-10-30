@@ -196,6 +196,7 @@ pre { background:#080c11; }
 <nav id="menu">
   <h1><svg class="brand-mark" viewBox="0 0 48 48" fill="none" aria-hidden="true"><path d="M17 4H12a8 8 0 0 0-8 8v6m0 12v6a8 8 0 0 0 8 8h5m13 0h6a8 8 0 0 0 8-8v-6" stroke="#F8F9FA" stroke-width="4.5" stroke-linecap="round"/><path d="M30 4h6a8 8 0 0 1 8 8v6" stroke="#FFC629" stroke-width="4.5" stroke-linecap="round"/><path d="M15 39c1-6 2-7 5-9-4-2-6-6-5-11 0-7 7-11 13-9 3 1 5 1 8 0-1 6-6 9-13 8l-1 5-3-1c-3 0-2 5 1 5 2 7 5 8 10 7v5Z" fill="#F8F9FA"/><circle cx="29" cy="23" r="1.5" fill="#F8F9FA"/></svg><span class="brand-name">Studio <span>Avatar</span></span></h1><div class="menu-label">Espace de création</div>
   <button data-p="nouvelle" class="actif"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v16M4 12h16"/></svg></span>Nouvelle vidéo</button>
+  <button data-p="animation"><span class="ic">↔</span>À partir d’une vidéo</button>
   <button data-p="projets"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="7" height="14" rx="2"/><rect x="14" y="5" width="7" height="9" rx="2"/></svg></span>Mes projets</button>
   <button data-p="videos"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="m10 9 5 3-5 3Z"/></svg></span>Mes vidéos <span class="compte" id="n-cours" hidden></span></button>
   <button data-p="avatars"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M5 21v-2a7 7 0 0 1 14 0v2Z"/></svg></span>Mes avatars</button>
@@ -266,6 +267,34 @@ pre { background:#080c11; }
 
 <div class="page" id="p-modeles"><h2>Modèles</h2><p class="intro">Installez les poids compatibles et choisissez ceux utilisés pour vos prochaines générations. Les clips existants sont conservés.</p><div class="info">Les moteurs LTX et MuseTalk doivent être installés séparément. Les poids se téléchargent depuis leurs dépôts d’origine ; consultez leurs licences dans les liens Sources. Les accès restreints nécessitent HF_TOKEN et une autorisation obtenue sur Hugging Face.</div><p class="mut modele-chemin" id="modeles-emplacement"></p><p id="modeles-calcul" class="mut" aria-live="polite"></p><p id="modeles-erreur" class="tl-error" role="alert"></p><div id="modeles-transfert" aria-live="polite"></div><div id="modeles-grille"></div><section class="encadre"><h3>Importer un pack vidéo déjà installé</h3><p class="mut">Dossier local LTX-2.3 contenant la variante distilled et ses composants. Les fichiers ne seront pas copiés.</p><label for="modele-import-path">Chemin absolu du dossier</label><input id="modele-import-path" placeholder="/chemin/vers/le/modele"><label for="modele-import-nom">Nom dans le catalogue</label><input id="modele-import-nom" placeholder="Mon modèle LTX-2.3"><p><button class="sec" onclick="importerModele()">Ajouter au catalogue</button></p></section><section id="modeles-voix" class="modeles-groupe"></section></div>
 <!-- ================= MES VIDÉOS ================= -->
+<div class="page" id="p-animation">
+  <h2>À partir d’une vidéo</h2>
+  <p class="intro">Filmez votre performance, puis faites-la jouer par votre avatar : mouvements du corps et expressions guidés par votre vidéo.</p>
+  <div class="info">Essai expérimental Wan-Animate-2 · 1 à 3 secondes. Le décor vient de la photo de l’avatar. La fidélité des gestes, des mains et de la bouche reste à vérifier ; aucun lipsync supplémentaire n’est appliqué.</div>
+  <p id="animation-statut" class="mut" role="status"></p>
+  <p><button class="sec petit" id="animation-modeles" onclick="page('modeles')">Voir les modèles</button></p>
+  <p id="animation-erreur" class="tl-error" role="alert"></p>
+  <section class="encadre">
+    <h3>1. Votre performance</h3>
+    <p class="mut">Une seule personne, bien éclairée, visage et mains visibles. Choisissez d’abord un extrait court pour vérifier le résultat.</p>
+    <label for="animation-video">Vidéo de référence</label><select id="animation-video" onchange="apercuPerformance()"></select>
+    <p><button class="sec" id="animation-importer" onclick="$('animation-fichier').click()">Importer ma vidéo</button><input type="file" id="animation-fichier" accept="video/mp4,video/quicktime,video/webm,.m4v" hidden onchange="importerPerformance(this.files[0])"></p>
+    <video id="animation-source" controls playsinline preload="metadata" hidden style="width:100%;max-height:320px"></video>
+    <div class="ligne"><div><label for="animation-debut">Début de l’extrait (secondes)</label><input id="animation-debut" type="number" min="0" step="0.1" value="0"></div><div><label for="animation-duree">Durée de l’essai (secondes)</label><input id="animation-duree" type="number" min="1" max="3" step="0.1" value="1"></div></div>
+  </section>
+  <section class="encadre">
+    <h3>2. Le personnage</h3>
+    <label for="animation-avatar">Avatar</label><select id="animation-avatar" onchange="apercuAvatarPerformance()"></select>
+    <img id="animation-photo" alt="Avatar de référence" hidden style="max-height:220px;max-width:100%;border-radius:12px">
+    <label for="animation-prompt">Apparence et décor de l’avatar</label><textarea id="animation-prompt" placeholder="Décrivez la personne, ses vêtements et son décor. Les gestes viennent de votre vidéo."></textarea>
+    <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="animation-audio" checked> Conserver ma voix et le son de la vidéo</label>
+    <details style="margin-top:16px"><summary>Seed avancée</summary><label for="animation-seed">Seed fixe (facultatif)</label><input id="animation-seed" type="number" min="0" max="2147483647" placeholder="Aléatoire à chaque essai"></details>
+    <p class="mut">Poids sur le disque des modèles. Calcul dans un processus isolé, budget maximal de <span id="animation-budget">12</span> Gio et réserve système de 4 Gio. Cet essai peut être long.</p>
+    <p><button id="animation-generer" onclick="genererPerformance()" disabled>Transférer ma performance</button></p>
+  </section>
+  <section class="encadre"><h3>Mes essais vidéo</h3><div id="animation-resultats"></div></section>
+</div>
+
 <div class="page" id="p-videos">
   <h2>Mes vidéos</h2>
   <p class="intro">Les vidéos en préparation apparaissent ici, puis prêtes à regarder et télécharger.</p>
@@ -342,10 +371,11 @@ async function api(url, corps) { const r = await fetch(url, { method: corps ? 'P
 // ---------------- navigation ----------------
 function page(p) {
   if(p!=='projets') $('moniteur-video')?.pause();
-  $('page-label').textContent = {nouvelle:'Nouvelle vidéo',projets:'Mes projets',modeles:'Modèles',videos:'Mes vidéos',voix:'Mes voix',avatars:'Mes avatars',creer:'Créer un avatar',avance:'Mode avancé'}[p];
+  if(p!=='animation')$('animation-source')?.pause();
+  $('page-label').textContent = {nouvelle:'Nouvelle vidéo',animation:'À partir d’une vidéo',projets:'Mes projets',modeles:'Modèles',videos:'Mes vidéos',voix:'Mes voix',avatars:'Mes avatars',creer:'Créer un avatar',avance:'Mode avancé'}[p];
   document.querySelectorAll('#menu button[data-p]').forEach(b => b.classList.toggle('actif', b.dataset.p === p));
   document.querySelectorAll('.page').forEach(x => x.classList.toggle('actif', x.id === 'p-' + p));
-  dessiner(); if(p==='voix')dessinerVoix(); if(p==='modeles'||p==='creer') chargerModeles(true); window.scrollTo(0, 0);
+  dessiner(); if(p==='animation')chargerAnimation(); if(p==='voix')dessinerVoix(); if(p==='modeles'||p==='creer') chargerModeles(true); window.scrollTo(0, 0);
 }
 document.querySelectorAll('#menu button[data-p]').forEach(b => b.onclick = () => page(b.dataset.p));
 function aller(n) {
@@ -493,10 +523,52 @@ async function creerProjet() {
   aller(1); page('projets'); await rafraichir(true);   // ouvrir le projet tout de suite, sans attendre le rafraîchissement
 }
 
+// ---------------- transfert de performance ----------------
+let ANIMATION_ETAT=null,ANIMATION_SIGNATURE='';
+async function chargerAnimation(){
+  try{
+    ANIMATION_ETAT=await api('/api/animation');
+    $('animation-budget').textContent=ANIMATION_ETAT.budget_go;
+    $('animation-modeles').textContent=ANIMATION_ETAT.installe?'Modèle installé · Voir dans Modèles':'Installer les modèles';
+    $('animation-statut').textContent=ANIMATION_ETAT.raison+' '+ANIMATION_ETAT.note;
+    options($('animation-video'),(E.fichiers.performances||[]).map(v=>[v.nom,tige(v.nom)+(v.duree?' · '+v.duree+' s':'')]),'Choisir une vidéo');
+    options($('animation-avatar'),(E.fichiers.sources||[]).filter(v=>/\.(png|jpe?g|webp)$/i.test(v.nom)).map(v=>[v.nom,tige(v.nom)]),'Choisir un avatar');
+    $('animation-generer').disabled=!ANIMATION_ETAT.pret||E.taches.some(t=>t.type==='animation'&&['en attente','en cours'].includes(t.etat));
+    const jobs=E.taches.filter(t=>t.type==='animation');
+    const signature=JSON.stringify(jobs);
+    if(signature===ANIMATION_SIGNATURE)return;ANIMATION_SIGNATURE=signature;
+    $('animation-resultats').innerHTML=jobs.map(t=>`<article class="encadre"><strong>${esc(t.etat)} · ${t.diagnostic_run?'Diagnostic technique, qualité non évaluée · ':''}${esc(tige(t.params.avatar))}</strong><p class="mut">${t.params.debut}–${(+t.params.debut + +t.params.duree).toFixed(1)} s · seed ${t.params.seed}</p>${t.resultat?.fichier?`<video controls playsinline preload="metadata" style="width:100%;max-height:400px" src="${f('videos',t.resultat.fichier)}"></video><p><a href="${f('videos',t.resultat.fichier)}" download>Télécharger</a></p>`:['en attente','en cours'].includes(t.etat)?`<div data-suivi-tache="${t.id}">${progressionHTML(t)}</div>`:`<p class="tl-error">${esc(t.erreur||'Essai interrompu.')}</p>`}<button class="sec petit" onclick="page('avance');journal('${t.id}')">Voir le journal</button></article>`).join('')||'<p class="mut">Vos essais apparaîtront ici.</p>';
+  }catch(e){$('animation-erreur').textContent=e.message;}
+}
+function apercuPerformance(){const v=$('animation-source'),n=$('animation-video').value;v.hidden=!n;if(n){v.src=f('performances',n);v.load();}else{v.pause();v.removeAttribute('src');}}
+function apercuAvatarPerformance(){const i=$('animation-photo'),n=$('animation-avatar').value;i.hidden=!n;if(n)i.src=f('sources',n);}
+async function importerPerformance(file){
+  if(!file)return;
+  $('animation-erreur').textContent='';$('animation-importer').disabled=true;
+  try{
+    if(!/\.(mp4|mov|m4v|webm)$/i.test(file.name))throw Error('Choisissez une vidéo MP4, MOV ou WebM.');
+    if(file.size>1024**3)throw Error('Import limité à 1 Go. Découpez un extrait avant de l’importer.');
+    $('animation-statut').textContent='Import de la vidéo…';
+    const r=await fetch('/api/envoi?dossier=performances&nom='+encodeURIComponent(crypto.randomUUID().slice(0,8)+'-'+file.name),{method:'PUT',body:file});
+    const data=await r.json();if(!r.ok)throw Error(data.erreur||'Import impossible.');
+    await rafraichir(true);await chargerAnimation();$('animation-video').value=data.nom;apercuPerformance();
+  }catch(e){$('animation-erreur').textContent=e.message;}finally{$('animation-importer').disabled=false;$('animation-fichier').value='';}
+}
+async function genererPerformance(){
+  $('animation-erreur').textContent='';
+  try{
+    const seed=$('animation-seed').value;
+    await api('/api/animation',{avatar:$('animation-avatar').value,video:$('animation-video').value,
+      debut:+$('animation-debut').value,duree:+$('animation-duree').value,prompt:$('animation-prompt').value,
+      conserver_audio:$('animation-audio').checked,seed:seed===''?null:+seed});
+    await rafraichir(true);
+  }catch(e){$('animation-erreur').textContent=e.message;}
+}
+
 // ---------------- mes vidéos ----------------
 function listeVideos() {
   const pretes = E.fichiers.videos || [];
-  const enCours = E.taches.filter(t => t.type === 'video' && (['en attente', 'en cours'].includes(t.etat) || (t.etat === 'erreur' && !pretes.some(v => tige(v.nom) === t.params.nom))));
+  const enCours = E.taches.filter(t => ['video','animation'].includes(t.type) && !t.diagnostic_run && (['en attente', 'en cours'].includes(t.etat) || (t.etat === 'erreur' && !pretes.some(v => tige(v.nom) === t.params.nom))));
   const lignes = enCours.map(t => {
     const p = t.params, ecoule = t.debut ? Date.now() / 1000 - t.debut : 0, est = p.estimation || 300;
     const devant = E.taches.filter(x => ['en attente', 'en cours'].includes(x.etat) && x.cree < t.cree).length;
@@ -505,7 +577,7 @@ function listeVideos() {
       : progressionHTML(t,false);
     const btn = t.etat === 'erreur' ? `<button class="petit" onclick="reessayer('${t.id}')">Réessayer</button><button class="sec petit" onclick="masquer('${t.id}')">Retirer</button>`
       : `<button class="sec petit" onclick="annuler('${t.id}')">Annuler</button>`;
-    return `<div class="ligne-video"><img src="${f('sources', p.avatar)}"><div><div style="font-weight:600;font-size:16px">${esc(p.nom)}</div>${corps}</div><div style="display:flex;flex-direction:column;gap:8px">${btn}</div></div>`;
+    return `<div class="ligne-video"><img src="${f('sources', p.avatar)}"><div><div style="font-weight:600;font-size:16px">${esc(p.nom||('Performance · '+tige(p.avatar)))}</div>${corps}</div><div style="display:flex;flex-direction:column;gap:8px">${btn}</div></div>`;
   });
   const faites = pretes.map(v => `<div class="ligne-video"><video src="${f('videos', v.nom)}#t=0.1" controls preload="metadata" playsinline></video><div>
       <div style="font-weight:600;font-size:16px">${esc(v.meta.nom || tige(v.nom))}</div>
@@ -515,7 +587,14 @@ function listeVideos() {
   $('liste-videos').innerHTML = [...lignes, ...faites].join('') || `<div class="vide">Aucune vidéo pour l'instant.<br><br><button onclick="page('nouvelle')">Créer ma première vidéo</button></div>`;
 }
 function masquer(id) { MASQUES.add(id); try { localStorage.setItem('masques', JSON.stringify([...MASQUES])); } catch (e) {} rafraichir(true); }
-async function reessayer(id) { const t = E.taches.find(x => x.id === id); masquer(id); await api('/api/tache', { type: 'video', params: t.params }); rafraichir(true); }
+async function reessayer(id) {
+  const t=E.taches.find(x=>x.id===id);if(!t)return;
+  try{
+    if(t.type==='animation')await api('/api/animation',t.params);
+    else await api('/api/tache',{type:'video',params:t.params});
+    masquer(id);await rafraichir(true);
+  }catch(e){alert(e.message);}
+}
 
 // ---------------- mes avatars ----------------
 function ficheAvatar() {
@@ -586,7 +665,7 @@ function dessiner() {
   if (CH.avatar && !S.some(s => s.nom === CH.avatar)) CH.avatar = null;
   $('sys-vs').innerHTML = `Voix intégrées : <b class="${VOIX.ok ? 'ok' : 'err'}">${VOIX.ok ? 'prête' : 'à configurer'}</b>`;
   $('sys-t7').innerHTML = `Modèles LTX : <b class="${E.t7 ? 'ok' : 'err'}">${E.t7 ? 'disponibles' : 'absents'}</b>`;
-  const actives = E.taches.filter(t => t.type === 'video' && ['en attente', 'en cours'].includes(t.etat)).length;
+  const actives = E.taches.filter(t => ['video','animation'].includes(t.type) && !t.diagnostic_run && ['en attente', 'en cours'].includes(t.etat)).length;
   $('n-cours').hidden = !actives; $('n-cours').textContent = actives;
   $('choix-avatar').innerHTML = S.map(x => carteAvatar(x, `CH.avatar='${js(x.nom)}';dessiner()`, CH.avatar === x.nom)).join('') + depot('Nouvel avatar');
   const iCh = CH.avatar ? infos(CH.avatar) : null;
@@ -655,9 +734,10 @@ async function rafraichir(forcer) {
   if ($('p-modeles').classList.contains('actif') || ($('p-creer').classList.contains('actif') && !MODELES)) await chargerModeles();
   const e = JSON.stringify([E.fichiers, E.taches.map(t => [t.id, t.etat]), E.t7, VOIX.ok, VOIX.voix.length, PROJETS]);
   if (forcer || e !== empreinte) { empreinte = e; dessiner(); }
-  else { if ($('p-videos').classList.contains('actif') && E.taches.some(t => t.etat === 'en cours' && t.type === 'video')) listeVideos(); dessinerTaches(); }
+  else { if ($('p-videos').classList.contains('actif') && E.taches.some(t => t.etat === 'en cours' && ['video','animation'].includes(t.type))) listeVideos(); dessinerTaches(); }
   afficherProgressions();
   await actualiserMoniteur();
+  if($('p-animation').classList.contains('actif'))await chargerAnimation();
 }
 let TL_DIRTY = false;
 function ouvrirProjet(id) { PROJET=id; ELEMENT=null; TL_DIRTY=false; TL_EMPREINTE=''; dessinerProjets(); }
@@ -739,6 +819,15 @@ function analyserProgression(texte, etape='Préparation') {
   // displayed as the progress of a later FFmpeg/MuseTalk command.
   const commande=texte.lastIndexOf('\n$ ');
   const log=commande>=0?texte.slice(commande+1):texte;
+  if(log.includes('lancer_animation.py')||log.includes('Animation Wan : étape')||log.includes('Index des couches :')||log.includes('[Wan]')) {
+    if(log.includes('Encodage vidéo'))return {label:'Encodage vidéo',pourcent:null};
+    const wan=[...log.matchAll(/Animation Wan : étape (\d+)\/(\d+)/g)].at(-1);
+    const phase=[...log.matchAll(/\[Wan\] ([^\r\n]+)/g)].at(-1);
+    if(phase&&(!wan||phase.index>wan.index))return {label:phase[1],pourcent:null};
+    if(wan)return {label:'Animation Wan · segment en cours',fait:+wan[1],total:+wan[2],pourcent:Math.min(100,Math.round(100*wan[1]/wan[2]))};
+    const prep=[...log.matchAll(/(?:Préparation disque|Index des couches) : ([^\r\n]+)/g)].at(-1);
+    return {label:prep?'Préparation des couches sur disque · '+prep[1]:'Chargement Wan-Animate-2',pourcent:null};
+  }
   const muse=[...log.matchAll(/\[MuseTalk\] (Images (\d+)\/(\d+)|Détection du visage|Encodage)/g)].at(-1);
   if(muse) {
     if(!muse[2]) return {label:muse[1]==='Encodage'?'Encodage de la vidéo synchronisée':'Détection du visage',pourcent:null};
@@ -796,7 +885,7 @@ function progressionHTML(t,actions=true) {
   const s=SUIVI_TACHES[t.id], p=s?.info||{label:t.etape||'Préparation',pourcent:null};
   const attente=t.etat==='en attente', age=s?Math.floor((Date.now()-s.change)/1000):null;
   const ecoule=t.debut?Math.max(0,Date.now()/1000-t.debut):0;
-  const titre=({projet_clip:'Mini-clip',projet_pont:'Transition',projet_export:'Vidéo finale',projet_auto:'Génération automatique',video:'Vidéo',clip:'Mouvement',pont:'Transition',lipsync:'Synchronisation labiale'})[t.type]||'Génération';
+  const titre=({animation:'Transfert de performance',projet_clip:'Mini-clip',projet_pont:'Transition',projet_export:'Vidéo finale',projet_auto:'Génération automatique',video:'Vidéo',clip:'Mouvement',pont:'Transition',lipsync:'Synchronisation labiale'})[t.type]||'Génération';
   return `<div class="suivi-calcul" role="status"><div class="suivi-entete"><strong>${titre} · ${esc(attente?'En attente':p.label)}</strong><span>${!attente&&p.pourcent!=null?p.pourcent+' % de la passe':''}</span></div><div class="barre ${attente||p.pourcent==null?'indeterminee':''}" role="progressbar" aria-label="${esc(attente?'En attente':p.label)}" aria-valuemin="0" aria-valuemax="100" ${!attente&&p.pourcent!=null?`aria-valuenow="${p.pourcent}"`:''}><div style="width:${p.pourcent??35}%"></div></div><div class="suivi-details">${t.automatique?`${t.automatique.faits} / ${t.automatique.total} éléments terminés · ${esc(t.etape||'')}<br>`:''}${attente?'La tâche démarrera après le calcul en cours.':`${p.fait!=null?`${p.fait} / ${p.total} étapes · `:''}${minsec(ecoule)} écoulées${p.restant?' · reste ≈ '+esc(p.restant)+' pour cette passe':''}`}</div>${!attente?`<div class="suivi-activite">${age==null?'Connexion au journal du moteur…':age<10?'● Nouvelle sortie du moteur reçue':`Dernière sortie reçue il y a ${minsec(age)}${age>=120?' · cette étape peut être silencieuse':''}`}</div>`:''}${actions?`<div class="suivi-actions">${t.params.projet?`<button class="sec petit" onclick="page('projets');ouvrirProjet('${js(t.params.projet)}')">Voir la timeline</button>`:''}<button class="sec petit" onclick="annuler('${t.id}')">Annuler</button></div>`:''}</div>`;
 }
 function afficherProgressions() {
@@ -860,7 +949,7 @@ async function chargerModeles(voix=false) {
     $('modeles-emplacement').textContent='Stockage : '+data.dossier;
     $('modeles-calcul').textContent=calcul?'Une génération est en cours : les téléchargements et changements de modèle seront disponibles à sa fin. Vous pouvez consulter le catalogue et vérifier les tailles.':'';
     $('modeles-transfert').innerHTML=transfert.id && !['taille_disponible','installe'].includes(transfert.statut)?`<div class="encadre"><strong>${esc(({analyse:'Analyse du dépôt',telechargement:'Téléchargement',verification:'Vérification des fichiers',installe:'Installation terminée',interrompu:'Interrompu · reprise disponible',erreur:'Échec · reprise disponible',taille_disponible:'Taille vérifiée'})[transfert.statut] || transfert.statut)}</strong> · ${esc(transfert.id)}${transfert.total && ['telechargement','verification','interrompu'].includes(transfert.statut)?`<div class="barre"><div style="width:${Math.min(100,100*(transfert.recu||0)/transfert.total)}%"></div></div><small>${formatOctets(transfert.recu||0)} / ${formatOctets(transfert.total)}</small>`:''}<p class="mut">${esc(transfert.fichier||'')}</p>${transfert.erreur?`<p class="tl-error">${esc(transfert.erreur)}</p>`:''}${actif?'<button class="sec petit" onclick="actionModele(\'annuler\')">Annuler le transfert</button>':''}</div>`:'';
-    $('modeles-grille').innerHTML=['video','texte','lipsync','image','synthese'].map(role=>`<section class="modeles-groupe"><h3>${({video:'Génération vidéo',texte:'Encodeur de texte LTX',lipsync:'Synchronisation labiale',synthese:'Synthèse vocale intégrée',image:'Création d’avatar (FLUX)'})[role]}</h3><div class="modeles-cartes">${data.catalogue.filter(m=>m.role===role).map(m=>`<article class="modele-carte ${m.actif?'selectionne':''}"><div class="modele-entete"><strong>${esc(m.nom)}</strong><span class="etiq ${m.installe?'mvt':'prep'}">${m.actif?'Sélectionné · ':''}${m.installe?'Installé':'Non installé'}</span></div><p class="mut">${esc(m.description)}</p>${m.ram?`<p class="mut">Mémoire conseillée : ${m.ram} Go ou plus (indicatif).</p>`:''}<p><b>${formatOctets(m.octets)}</b>${role==='video'?' + encodeur Gemma partagé':''}</p><details><summary>Sources et emplacement</summary><p class="modele-chemin">${esc(m.path)}</p>${m.sources.map(repo=>`<a href="https://huggingface.co/${repo}" target="_blank" rel="noopener noreferrer">${esc(repo)}</a><br>`).join('')}</details><div class="tl-actions">${m.installe?`<button class="petit" ${m.actif||calcul?'disabled':''} onclick="actionModele('choisir','${m.id}')">${m.actif?'Utilisé pour les prochaines tâches':'Utiliser ce modèle'}</button>`:''}${!m.local?`<button class="sec petit" ${actif?'disabled':''} onclick="actionModele('analyser','${m.id}')">Vérifier la taille</button>${m.octets!=null?`<button class="${m.installe?'sec ':''}petit" ${actif||calcul?'disabled':''} onclick="actionModele('telecharger','${m.id}')">${m.installe?'Vérifier / réparer':'Télécharger / reprendre'}</button>`:''}`:''}</div></article>`).join('')}</div></section>`).join('');
+    $('modeles-grille').innerHTML=['video','texte','lipsync','image','synthese','animation'].map(role=>`<section class="modeles-groupe"><h3>${({video:'Génération vidéo',texte:'Encodeur de texte LTX',lipsync:'Synchronisation labiale',synthese:'Synthèse vocale intégrée',animation:'Transfert de performance · expérimental',image:'Création d’avatar (FLUX)'})[role]}</h3><div class="modeles-cartes">${data.catalogue.filter(m=>m.role===role).map(m=>`<article class="modele-carte ${m.actif?'selectionne':''}"><div class="modele-entete"><strong>${esc(m.nom)}</strong><span class="etiq ${m.installe?'mvt':'prep'}">${m.actif?'Sélectionné · ':''}${m.installe?'Installé':'Non installé'}</span></div><p class="mut">${esc(m.description)}</p>${m.ram?`<p class="mut">Mémoire conseillée : ${m.ram} Go ou plus (indicatif).</p>`:''}<p><b>${formatOctets(m.octets)}</b>${role==='video'?' + encodeur Gemma partagé':''}</p><details><summary>Sources et emplacement</summary><p class="modele-chemin">${esc(m.path)}</p>${m.sources.map(repo=>`<a href="https://huggingface.co/${repo}" target="_blank" rel="noopener noreferrer">${esc(repo)}</a><br>`).join('')}</details><div class="tl-actions">${m.installe?`<button class="petit" ${m.actif||calcul?'disabled':''} onclick="actionModele('choisir','${m.id}')">${m.actif?'Utilisé pour les prochaines tâches':'Utiliser ce modèle'}</button>`:''}${!m.local?`<button class="sec petit" ${actif?'disabled':''} onclick="actionModele('analyser','${m.id}')">Vérifier la taille</button>${m.octets!=null?`<button class="${m.installe?'sec ':''}petit" ${actif||calcul?'disabled':''} onclick="actionModele('telecharger','${m.id}')">${m.installe?'Vérifier / réparer':'Télécharger / reprendre'}</button>`:''}`:''}</div></article>`).join('')}</div></section>`).join('');
     $('modeles-voix').innerHTML='<h3>Voix intégrées</h3><p class="mut">Les modèles vocaux ci-dessus tournent directement dans Studio Avatar. Gérez les références et les prises dans Mes voix. Installez le runtime avec python3 installer_voix.py (MLX), ou python3.12 installer_voix.py --moteur omnivoice.</p>';
   }catch(e){$('modeles-erreur').textContent=e.message;}
 }

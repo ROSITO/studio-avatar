@@ -405,3 +405,77 @@ reference prefix occupied about **79 MiB** on the model disk. This measurement
 applies to reuse of the same reference; a new or changed reference still needs
 one full preparation. Memory admission checks and both inference watchdogs remain
 active.
+
+
+### Transférer une performance filmée (expérimental)
+
+La page **À partir d’une vidéo** accepte une vidéo MP4/MOV/WebM et une photo
+existante de l’avatar. Choisissez un extrait de **1 à 3 secondes**, décrivez
+l’apparence et le décor de la photo, puis lancez le transfert. Le son original
+peut être conservé. Les résultats et les journaux restent accessibles dans cette
+page ; la vidéo exportée apparaît aussi dans Mes vidéos.
+
+Les noyaux MPS, un petit transformer avec offload et un pipeline miniature
+avec export MP4 ont été exécutés sur Apple Silicon. La validation des
+paramètres des poids complets est séparée de la validation visuelle.
+
+Ce premier mode utilise **Wan-Animate-2** : il anime le personnage dans le décor
+de sa photo. Il ne propose pas encore le remplacement localisé du corps dans
+le décor exact de la vidéo, ni un changement de voix. La fidélité des mains,
+des expressions et de la bouche doit être évaluée sur chaque prise.
+
+Installation Apple Silicon, dans un environnement isolé :
+
+```sh
+python3.13 installer_animation.py
+```
+
+Puis, dans **Modèles → Transfert de performance**, vérifiez la taille et
+ téléchargez Wan-Animate-2 (environ 46 Go). Le répertoire configuré par
+`STUDIO_MODELS_DIR` reçoit les poids et le dossier temporaire d’offload.
+Prévoir **2 Go libres supplémentaires** pour les fichiers temporaires.
+Les couches sont indexées dans les safetensors originaux, sans dupliquer le modèle.
+Aucun téléchargement de poids n’est effectué pendant une génération.
+
+L’intégration Diffusers repose sur la [proposition #14412](https://github.com/huggingface/diffusers/pull/14412),
+encore non fusionnée lors de l’intégration, fixée à la révision
+`14f482c30c91021cc0e363a0a17a115b44972aee` du contributeur `kelseyee/diffusers`.
+`adapter_animation.py` adapte uniquement les deux fichiers de cet environnement
+isolé : lecture vidéo OpenCV, RoPE réel FP32 et attention SDPA découpée,
+sans CUDA, Flash Attention ni Triton. Ces modifications ne rendent pas le
+port officiellement pris en charge par Wan ou Diffusers.
+
+Les couches sont chargées depuis le disque plutôt que de placer tout le modèle
+en RAM. Le dictionnaire UMT5 lit uniquement les lignes correspondant aux
+tokens du texte ; les embeddings ne sont pas intégralement chargés en mémoire. Le budget par défaut est **12 Gio**, plafonné à la moitié de la mémoire
+physique. Le plafond n’est pas réduit à partir d’une estimation instantanée de
+la mémoire disponible. Un essai est refusé s’il reste moins de 4 Gio disponibles
+ou si la pression mémoire est critique. Le mode normal demande un plafond
+configuré d’au moins 10 Gio. Un superviseur extérieur au
+processus de génération l’arrête si le budget ou la pression mémoire dépasse
+les limites. La limite MPS seule ne constitue pas une garantie système.
+La conversion FP32 des couches à la demande et l’offload rendent les essais
+potentiellement très lents.
+Les tests de noyaux et du petit transformer ne valident pas la qualité d’un
+rendu avec les poids complets. Un diagnostic réel d’une seconde, une étape,
+a été exporté sur MPS à résolution minimale : pic physique 2,92 Gio, environ
+6 min 8 s. Ce résultat valide le parcours technique, pas la qualité visuelle
+des rendus normaux à 40 étapes.
+
+Variables facultatives : `STUDIO_ANIMATION_PYTHON` et
+`STUDIO_ANIMATION_MAX_RAM_GB`. Pour lancer les tests natifs :
+
+```sh
+.venv-animation/bin/python -m unittest test_animation -v
+```
+
+Sources : [projet officiel](https://github.com/Wan-Video/Wan-Animate-2),
+[poids Diffusers](https://huggingface.co/Wan-AI/Wan2.2-Animate-2-14B-Diffusers).
+Les vidéos importées (`performances/`), références, résultats et poids ne sont
+jamais inclus dans le dépôt public.
+
+Le point d’entrée développeur `POST /api/animation/diagnostic` utilise le même
+format que `/api/animation`, mais une seule étape et une résolution réduite.
+Son budget minimal est de 2 Gio, toujours avec une réserve système de 4 Gio et
+le superviseur. Il sert à vérifier le moteur complet, pas à évaluer la qualité ;
+les tâches et résultats portent explicitement cette mention.

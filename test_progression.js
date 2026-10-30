@@ -40,3 +40,14 @@ const mc=context.imagesBlocs(mp);
 assert.equal(Object.values(mc).reduce((a,b)=>a+b,0),162);
 assert.equal(context.raccordIntegre(mp,{gauche:'a',duree:.5}).coupe,44);
 assert.equal(context.raccordIntegre(mp,{gauche:'a',duree:.5}).frames,12);
+
+p=parse('$ python lancer_animation.py request.json\nPréparation disque : transformer/shard.safetensors');
+assert.equal(p.pourcent,null);assert.match(p.label,/couches sur disque/);
+p=parse('$ python lancer_animation.py request.json\nAnimation Wan : étape 8/40');
+assert.equal(p.pourcent,20);assert.equal(p.fait,8);assert.equal(p.total,40);
+p=parse('$ python lancer_animation.py request.json\nAnimation Wan : étape 40/40\nEncodage vidéo');
+assert.equal(p.pourcent,null);assert.equal(p.label,'Encodage vidéo');
+
+p=parse('Animation Wan : étape 40/40\n[Wan] Décodage du mouvement');
+assert.equal(p.pourcent,null);assert.equal(p.label,'Décodage du mouvement');
+p=parse('[Wan] Encodage du texte terminé\nAnimation Wan : étape 2/40');assert.equal(p.pourcent,5);
