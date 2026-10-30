@@ -1,6 +1,7 @@
 """Profils vocaux et synthèse locale. Aucune dépendance au serveur VoiceStudio."""
 import memoire
 import balises
+import audio_partiel
 import json
 import os
 from pathlib import Path
@@ -116,8 +117,23 @@ class Atelier:
             if t.get('annuler'):raise RuntimeError('Tâche annulée')
             tmp.replace(out)
             out.with_suffix('.json').write_text(json.dumps(dict(synthetique=True,moteur=choix['id'],profil=profil['id'],texte=texte_original,texte_synthese=texte,seed=seed),ensure_ascii=False))
+        except Exception:
+            partiel=audio_partiel.chemin(brut)
+            if partiel.is_file() and partiel.stat().st_size>56:
+                try:
+                    dest=out.with_name(out.stem+'-partiel.wav')
+                    shutil.copyfile(partiel,dest)
+                    dest.with_suffix('.json').write_text(json.dumps(dict(synthetique=True,incomplet=True,
+                        moteur=choix['id'],profil=profil['id'],texte_demande=texte_original,seed=seed),ensure_ascii=False))
+                    t['partiel']=dict(fichier=dest.name,incomplet=True)
+                    self.s.sauver()
+                except OSError as exc:
+                    t['erreur_sauvegarde_partielle']=str(exc)
+            raise
         finally:
-            for f in (req,brut,tmp):f.unlink(missing_ok=True)
+            partiel=audio_partiel.chemin(brut)
+            for f in (req,brut,tmp,partiel.with_suffix('.tmp.wav')):f.unlink(missing_ok=True)
+            if not t.get('erreur_sauvegarde_partielle'):partiel.unlink(missing_ok=True)
     def essai(self,d):
         profil=self.profil(d.get('profil'));texte=str(d.get('texte','')).strip()
         if not texte or len(texte)>5000:raise ValueError('Saisissez entre 1 et 5000 caractères.')

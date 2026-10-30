@@ -93,6 +93,25 @@ class VoixIntegreesTest(unittest.TestCase):
         with patch.object(studio,'lancer',side_effect=RuntimeError('Erreur moteur')):
             with self.assertRaises(RuntimeError):self.atelier.generer(t,'Essai',self.profil['id'],'fr',out)
         self.assertEqual(out.read_bytes(),b'ancienne prise');self.assertFalse(list(self.atelier.root.glob('*requete.json')))
+    def test_echec_recupere_audio_partiel_sans_remplacer_prise(self):
+        import audio_partiel
+        self.atelier.python=self.fixture.root/'python';self.atelier.python.touch()
+        t=dict(id='abcdef123456',modeles=dict(synthese=dict(id='qwen3-tts-mlx',path='local',installe=True)))
+        out=studio.ICI/'audios'/'ancienne.wav';out.write_bytes(b'ancienne prise')
+        def echec(t,cmd,env=None):
+            request=json.loads(Path(cmd[-1]).read_text())
+            import shutil
+            shutil.copyfile(studio.ICI/'references/ref.wav',audio_partiel.chemin(request['sortie']))
+            raise RuntimeError('Pression mémoire globale critique')
+        with patch.object(studio,'lancer',side_effect=echec),self.assertRaisesRegex(RuntimeError,'globale critique'):
+            self.atelier.generer(t,'Un long essai.',self.profil['id'],'fr',out)
+        self.assertEqual(out.read_bytes(),b'ancienne prise')
+        partiel=studio.ICI/'audios'/t['partiel']['fichier']
+        self.assertAlmostEqual(studio.duree(partiel),3,places=2)
+        self.assertTrue(json.loads(partiel.with_suffix('.json').read_text())['incomplet'])
+        self.assertNotIn('resultat',t)
+        self.assertFalse(list(self.atelier.root.glob('*partiel.wav')))
+
     def test_seed_essai_optionnelle_et_bornee(self):
         t=self.atelier.essai(dict(profil=self.profil['id'],texte='Bonjour.',seed=7))
         self.assertEqual(t['params']['seed'],7)

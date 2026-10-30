@@ -489,3 +489,14 @@ mémoire disponible moins 4 Gio. L’admission refuse moins de 4 Gio disponibles
 ou une pression critique ; le superviseur extérieur conserve ses arrêts sur
 empreinte excessive et pression macOS. La limite transmise au processus enfant
 reste la même, même si l’estimation de mémoire disponible fluctue.
+
+
+Les erreurs de protection distinguent désormais le plafond du moteur et la
+pression mémoire **globale** de macOS, en indiquant l’empreinte et le plafond.
+Les prises longues Drama enregistrent après chaque portion décodée un snapshot
+WAV float32 atomique, lisible même après un arrêt forcé. En cas d’échec ou
+d’annulation, l’audio sauvegardé est conservé séparément, marqué **incomplet**
+et accessible dans Mes voix. Il ne remplace jamais une prise complète existante
+et ne signifie pas que la génération peut reprendre automatiquement à cet endroit.
+Les anciennes prises interrompues avant cette correction n’ont pas de snapshot
+récupérable.

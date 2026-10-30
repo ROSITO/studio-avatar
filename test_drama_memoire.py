@@ -43,8 +43,12 @@ class ExpertsDisqueTest(unittest.TestCase):
             SimpleNamespace(audio=np.array([.1,.2],dtype=np.float32)),
             SimpleNamespace(audio=np.array([.3],dtype=np.float32))])))
         d=dict(texte='a'*200,reference='ref.wav',transcription='Bonjour')
-        with patch('mlx_audio.audio_io.write') as ecrire:
-            generer_flux(modele,d,Path('sortie.wav'))
+        with tempfile.TemporaryDirectory() as dossier,patch('mlx_audio.audio_io.write') as ecrire:
+            sortie=Path(dossier)/'sortie.wav'
+            generer_flux(modele,d,sortie)
+            import audio_partiel,struct
+            sauvegarde=audio_partiel.chemin(sortie).read_bytes()
+            self.assertEqual(sauvegarde[56:],np.array([.1,.2,.3],dtype='<f4').tobytes())
         self.assertTrue(modele.generate.call_args.kwargs['stream'])
         np.testing.assert_array_equal(ecrire.call_args.args[1],np.array([.1,.2,.3],dtype=np.float32))
 

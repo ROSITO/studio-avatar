@@ -30,12 +30,15 @@ def generer_flux(modele,d,out):
     """Decode causally without the CLI helper's forced audio playback."""
     import numpy as np
     from mlx_audio.audio_io import write
-    morceaux=[];total=0
+    import audio_partiel
+    morceaux=[];total=0;pcm=bytearray()
     for resultat in modele.generate(text=d['texte'],ref_audio=d['reference'],ref_text=d['transcription'],
             stream=True,streaming_interval=1.0,max_tokens=limite_drama(d['texte'])):
         morceau=np.array(resultat.audio)
         morceaux.append(morceau);total+=len(morceau)
-        print(f'Audio décodé : {total/modele.sample_rate:.2f} s',flush=True)
+        pcm.extend(np.asarray(morceau,dtype='<f4').tobytes())
+        audio_partiel.sauver(out,pcm,int(modele.sample_rate))
+        print(f'Audio décodé : {total/modele.sample_rate:.2f} s (sauvegardé)',flush=True)
     if not morceaux:raise RuntimeError('Aucun audio généré')
     write(str(out),np.concatenate(morceaux),modele.sample_rate,format='wav')
 

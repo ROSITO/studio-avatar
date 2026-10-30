@@ -61,6 +61,21 @@ def danger_systeme(niveau=None):
     niveau=pression() if niveau is None else niveau
     return niveau>=4 or (niveau>=2 and disponible()<4*GIB)
 
+def decrire_arret(log):
+    lignes=re.findall(r'Protection m[ée]moire (?:externe|interne) : ([^\n]+)',log)
+    ligne=lignes[-1] if lignes else ''
+    chiffres=re.search(r'arrêt à ([\d.]+) Gio ; plafond ([\d.]+) Gio',ligne)
+    detail=f' (moteur : {chiffres[1]} Gio ; plafond : {chiffres[2]} Gio)' if chiffres else ''
+    if 'critique' in ligne or re.search(r'pression macOS [4-9]',ligne):
+        return 'Pression mémoire globale critique de macOS'+detail+' : moteur arrêté.'
+    if 'réserve système' in ligne or 'pression macOS' in ligne:
+        return 'Réserve mémoire système insuffisante'+detail+' : moteur arrêté.'
+    if 'budget dépassé' in ligne:
+        return 'Plafond mémoire du moteur dépassé'+detail+' : moteur arrêté.'
+    if 'mesure mémoire indisponible' in ligne:return 'Mesure mémoire du moteur indisponible : calcul arrêté.'
+    return 'Protection mémoire : moteur arrêté ; cause détaillée dans le journal.'
+
+
 def surveiller(plafond, mesure=None):
     stop=threading.Event()
     def boucle():
@@ -68,8 +83,11 @@ def surveiller(plafond, mesure=None):
             try:
                 rss=int(subprocess.check_output(['ps','-p',str(os.getpid()),'-o','rss='],stderr=subprocess.DEVNULL))*1024
                 gpu=mesure() if mesure else 0
-                if max(rss,gpu)>plafond or danger_systeme():
-                    os.write(2,b'Protection memoire : synthese arretee pour preserver les applications.\n')
+                utilise=max(rss,gpu);niveau=pression();danger=danger_systeme(niveau)
+                if utilise>plafond or danger:
+                    raison=('pression mémoire globale critique (macOS '+str(niveau)+')' if niveau>=4 else
+                            'réserve système inférieure à 4 Gio' if danger else 'budget dépassé')
+                    os.write(2,f'Protection memoire interne : arrêt à {utilise/GIB:.2f} Gio ; plafond {plafond/GIB:.2f} Gio ; {raison}.\n'.encode())
                     os._exit(73)
             except (OSError,ValueError,RuntimeError,subprocess.SubprocessError):pass
     threading.Thread(target=boucle,daemon=True).start()
@@ -105,7 +123,8 @@ def attendre(process,plafond,log):
             niveau=pression()
             systeme_en_danger=danger_systeme(niveau)
             danger=utilise>plafond or systeme_en_danger
-            raison='pression macOS '+str(niveau) if systeme_en_danger else 'budget dépassé'
+            raison=('pression mémoire globale critique (macOS '+str(niveau)+')' if niveau>=4 else
+                    'réserve système inférieure à 4 Gio (macOS '+str(niveau)+')' if systeme_en_danger else 'budget dépassé')
         except (OSError,ValueError,subprocess.SubprocessError):
             if process.poll() is not None:continue
             danger=True;raison='mesure mémoire indisponible'  # Fail closed.

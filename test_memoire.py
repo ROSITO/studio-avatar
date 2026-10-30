@@ -23,6 +23,14 @@ class BudgetMemoireTest(unittest.TestCase):
     def test_drama_child_keeps_transmitted_cap(self):
         with patch.dict(os.environ,{'STUDIO_TTS_MAX_RAM_GB':'16','STUDIO_TTS_EFFECTIVE_LIMIT':str(12*memoire.GIB)}),patch.object(memoire,'physique',return_value=36*memoire.GIB),patch.object(memoire,'disponible',return_value=6*memoire.GIB),patch.object(memoire,'pression',return_value=1):
             self.assertEqual(memoire.verifier('drama3-mlx'),12*memoire.GIB)
+    def test_message_distingue_processus_et_systeme(self):
+        msg=memoire.decrire_arret('Protection mémoire externe : arrêt à 7.81 Gio ; plafond 12.00 Gio ; pression macOS 4.')
+        self.assertIn('globale critique',msg);self.assertIn('7.81',msg);self.assertNotIn('dépassé',msg)
+        msg=memoire.decrire_arret('Protection mémoire externe : arrêt à 12.01 Gio ; plafond 12.00 Gio ; budget dépassé.')
+        self.assertIn('Plafond mémoire du moteur dépassé',msg)
+        msg=memoire.decrire_arret('Protection mémoire externe : arrêt à 7.81 Gio ; plafond 12.00 Gio ; réserve système inférieure à 4 Gio (macOS 2).')
+        self.assertIn('Réserve mémoire système insuffisante',msg)
+
     def test_superviseur_externe_tue_uniquement_enfant(self):
         import io
         child=subprocess.Popen([sys.executable,'-c','import time; time.sleep(5)'])

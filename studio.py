@@ -132,7 +132,9 @@ def lancer(t, cmd, env=None):
             else:code=p.wait()
         finally:EN_COURS['proc'] = None
     if t.get('annuler'): raise RuntimeError('Tâche annulée')
-    if code==73: raise RuntimeError('Protection mémoire : calcul arrêté pour préserver les applications.')
+    if code==73:
+        import memoire
+        raise RuntimeError(memoire.decrire_arret((ICI/'taches'/f"{t['id']}.log").read_text(errors='replace')[-8000:]))
     if code: raise RuntimeError(f'commande terminée avec le code {code} (voir le journal)')
 
 def ltx(t, images, prompt, W, H, frames, seed, sortie, audio=None):
