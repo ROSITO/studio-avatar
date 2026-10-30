@@ -104,6 +104,9 @@ def main():
                     if i==1 or i%16==0:print(f'Voix : {i} trames générées',flush=True)
                     yield trame
             modele._frames=trames
+            if not d.get('mesurer_contexte'):
+                import drama_progression
+                drama_progression.installer(modele,d['texte'])
         if d.get('mesurer_contexte'):
             import drama_benchmark
             drama_benchmark.mesurer(mx,modele,d);return

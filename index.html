@@ -815,7 +815,7 @@ async function actionProjet(action,extra={}) {
 }
 
 // BEGIN PROGRESSION PARSER
-function analyserProgression(texte, etape='Préparation') {
+function analyserProgression(texte, etape='Préparation', tache={}) {
   // Scope progress to the current command, so a completed LTX pass is never
   // displayed as the progress of a later FFmpeg/MuseTalk command.
   const commande=texte.lastIndexOf('\n$ ');
@@ -828,6 +828,19 @@ function analyserProgression(texte, etape='Préparation') {
     if(wan)return {label:'Animation Wan · segment en cours',fait:+wan[1],total:+wan[2],pourcent:Math.min(100,Math.round(100*wan[1]/wan[2]))};
     const prep=[...log.matchAll(/(?:Préparation disque|Index des couches) : ([^\r\n]+)/g)].at(-1);
     return {label:prep?'Préparation des couches sur disque · '+prep[1]:'Chargement Wan-Animate-2',pourcent:null};
+  }
+  if(tache.type==='voix'&&/^\$ .*ffmpeg/.test(log))return {label:'Enregistrement de l’audio',pourcent:99,estime:true};
+  const voix=[...log.matchAll(/Voix progression : (\d+)% · bloc (\d+)\/(\d+)/g)].at(-1);
+  const audio=[...log.matchAll(/Audio décodé : ([\d.]+) s/g)].at(-1);
+  if(voix||audio||tache.type==='voix') {
+    const preparation=log.lastIndexOf('Préparation vocale :')>log.lastIndexOf('Voix :')&&!log.slice(log.lastIndexOf('Préparation vocale :')).includes('terminée');
+    const label=preparation?'Préparation du bloc vocal':'Synthèse vocale';
+    if(voix)return {label,pourcent:Math.min(99,+voix[1]),estime:true,detail:`Bloc ${voix[2]} / ${voix[3]}${audio?' · '+audio[1]+' s d’audio sauvegardées':''}`};
+    // Older running workers do not emit block counters. Estimate their final
+    // duration at 3 words/s and state explicitly that this is approximate.
+    const mots=(tache.params?.texte||'').replace(/\[[^\]]*\]/g,'').trim().split(/\s+/).filter(Boolean).length;
+    if(audio&&mots)return {label,pourcent:Math.min(95,Math.floor(100*(+audio[1])/(mots/3))),estime:true,detail:audio[1]+' s d’audio sauvegardées · estimation selon le débit de parole'};
+    return {label:audio?label:etape,pourcent:null,detail:audio?audio[1]+' s d’audio sauvegardées':''};
   }
   const muse=[...log.matchAll(/\[MuseTalk\] (Images (\d+)\/(\d+)|Détection du visage|Encodage)/g)].at(-1);
   if(muse) {
@@ -878,7 +891,7 @@ async function chargerProgressions() {
   const actives=E.taches.filter(t=>t.etat==='en cours');
   await Promise.allSettled(actives.map(async t=>{
     const j=await api('/api/journal/'+t.id), avant=SUIVI_TACHES[t.id], texte=j.texte||'';
-    SUIVI_TACHES[t.id]={texte,change:!avant||avant.texte!==texte?Date.now():avant.change,info:analyserProgression(texte,t.etape||'Préparation')};
+    SUIVI_TACHES[t.id]={texte,change:!avant||avant.texte!==texte?Date.now():avant.change,info:analyserProgression(texte,t.etape||'Préparation',t)};
   }));
   for(const id of Object.keys(SUIVI_TACHES)) if(!actives.some(t=>t.id===id)) delete SUIVI_TACHES[id];
 }
@@ -886,8 +899,8 @@ function progressionHTML(t,actions=true) {
   const s=SUIVI_TACHES[t.id], p=s?.info||{label:t.etape||'Préparation',pourcent:null};
   const attente=t.etat==='en attente', age=s?Math.floor((Date.now()-s.change)/1000):null;
   const ecoule=t.debut?Math.max(0,Date.now()/1000-t.debut):0;
-  const titre=({animation:'Transfert de performance',projet_clip:'Mini-clip',projet_pont:'Transition',projet_export:'Vidéo finale',projet_auto:'Génération automatique',video:'Vidéo',clip:'Mouvement',pont:'Transition',lipsync:'Synchronisation labiale'})[t.type]||'Génération';
-  return `<div class="suivi-calcul" role="status"><div class="suivi-entete"><strong>${titre} · ${esc(attente?'En attente':p.label)}</strong><span>${!attente&&p.pourcent!=null?p.pourcent+' % de la passe':''}</span></div><div class="barre ${attente||p.pourcent==null?'indeterminee':''}" role="progressbar" aria-label="${esc(attente?'En attente':p.label)}" aria-valuemin="0" aria-valuemax="100" ${!attente&&p.pourcent!=null?`aria-valuenow="${p.pourcent}"`:''}><div style="width:${p.pourcent??35}%"></div></div><div class="suivi-details">${t.automatique?`${t.automatique.faits} / ${t.automatique.total} éléments terminés · ${esc(t.etape||'')}<br>`:''}${attente?'La tâche démarrera après le calcul en cours.':`${p.fait!=null?`${p.fait} / ${p.total} étapes · `:''}${minsec(ecoule)} écoulées${p.restant?' · reste ≈ '+esc(p.restant)+' pour cette passe':''}`}</div>${!attente?`<div class="suivi-activite">${age==null?'Connexion au journal du moteur…':age<10?'● Nouvelle sortie du moteur reçue':`Dernière sortie reçue il y a ${minsec(age)}${age>=120?' · cette étape peut être silencieuse':''}`}</div>`:''}${actions?`<div class="suivi-actions">${t.params.projet?`<button class="sec petit" onclick="page('projets');ouvrirProjet('${js(t.params.projet)}')">Voir la timeline</button>`:''}<button class="sec petit" onclick="annuler('${t.id}')">Annuler</button></div>`:''}</div>`;
+  const titre=({voix:'Audio',animation:'Transfert de performance',projet_clip:'Mini-clip',projet_pont:'Transition',projet_export:'Vidéo finale',projet_auto:'Génération automatique',video:'Vidéo',clip:'Mouvement',pont:'Transition',lipsync:'Synchronisation labiale'})[t.type]||'Génération';
+  return `<div class="suivi-calcul" role="status"><div class="suivi-entete"><strong>${titre} · ${esc(attente?'En attente':p.label)}</strong><span>${!attente&&p.pourcent!=null?(p.estime?'≈ ':'')+p.pourcent+(p.estime?' % estimés':' % de la passe'):''}</span></div><div class="barre ${attente||p.pourcent==null?'indeterminee':''}" role="progressbar" aria-label="${esc(attente?'En attente':p.label)}" aria-valuemin="0" aria-valuemax="100" ${!attente&&p.pourcent!=null?`aria-valuenow="${p.pourcent}"`:''}><div style="width:${p.pourcent??35}%"></div></div><div class="suivi-details">${t.automatique?`${t.automatique.faits} / ${t.automatique.total} éléments terminés · ${esc(t.etape||'')}<br>`:''}${attente?'La tâche démarrera après le calcul en cours.':`${p.detail?esc(p.detail)+' · ':''}${p.fait!=null?`${p.fait} / ${p.total} étapes · `:''}${minsec(ecoule)} écoulées${p.restant?' · reste ≈ '+esc(p.restant)+' pour cette passe':''}`}</div>${!attente?`<div class="suivi-activite">${age==null?'Connexion au journal du moteur…':age<10?'● Nouvelle sortie du moteur reçue':`Dernière sortie reçue il y a ${minsec(age)}${age>=120?' · cette étape peut être silencieuse':''}`}</div>`:''}${actions?`<div class="suivi-actions">${t.params.projet?`<button class="sec petit" onclick="page('projets');ouvrirProjet('${js(t.params.projet)}')">Voir la timeline</button>`:''}<button class="sec petit" onclick="annuler('${t.id}')">Annuler</button></div>`:''}</div>`;
 }
 function afficherProgressions() {
   const actives=E.taches.filter(t=>t.etat==='en cours'), attente=E.taches.filter(t=>t.etat==='en attente');

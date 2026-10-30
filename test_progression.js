@@ -51,3 +51,12 @@ assert.equal(p.pourcent,null);assert.equal(p.label,'Encodage vidéo');
 p=parse('Animation Wan : étape 40/40\n[Wan] Décodage du mouvement');
 assert.equal(p.pourcent,null);assert.equal(p.label,'Décodage du mouvement');
 p=parse('[Wan] Encodage du texte terminé\nAnimation Wan : étape 2/40');assert.equal(p.pourcent,5);
+// Audio progress survives a truncated journal and never promises completion early.
+p=context.analyserProgression('Voix progression : 67% · bloc 5/6\nPréparation vocale : 818 trames','Audio',{type:'voix'});
+assert.equal(p.pourcent,67);assert.equal(p.estime,true);assert.match(p.label,/Préparation/);assert.match(p.detail,/5 \/ 6/);
+p=context.analyserProgression('Audio décodé : 30.00 s (sauvegardé)','Audio',{type:'voix',params:{texte:Array(180).fill('mot').join(' ')}});
+assert.equal(p.pourcent,50);assert.equal(p.estime,true);assert.match(p.detail,/débit/);
+p=context.analyserProgression('Audio décodé : 999.00 s','Audio',{type:'voix',params:{texte:'court'}});assert.equal(p.pourcent,95);
+p=context.analyserProgression('Voix progression : 100% · bloc 6/6','Audio',{type:'voix'});assert.equal(p.pourcent,99);
+p=context.analyserProgression('Voix progression : 90% · bloc 6/6\n$ ffmpeg -i brut.wav final.wav','Audio',{type:'voix'});assert.equal(p.pourcent,99);assert.match(p.label,/Enregistrement/);
+p=context.analyserProgression('Chargement du modèle vocal local','Audio',{type:'voix'});assert.equal(p.pourcent,null);
