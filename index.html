@@ -820,7 +820,7 @@ function analyserProgression(texte, etape='Préparation', tache={}) {
   // displayed as the progress of a later FFmpeg/MuseTalk command.
   const commande=texte.lastIndexOf('\n$ ');
   const log=commande>=0?texte.slice(commande+1):texte;
-  if(log.includes('lancer_animation.py')||log.includes('Animation Wan : étape')||log.includes('Index des couches :')||log.includes('[Wan]')) {
+  if(log.includes('lancer_animation.py')||log.includes('Animation Wan : étape')||log.includes('Index des couches :')||log.includes('[Wan]')||/Segment \d+\/\d+:/.test(log)) {
     if(log.includes('Encodage vidéo'))return {label:'Encodage vidéo',pourcent:99,portee:'du calcul'};
     const wan=[...log.matchAll(/Animation Wan : étape (\d+)\/(\d+)/g)].at(-1);
     const segment=[...log.matchAll(/Segment (\d+)\/(\d+):\s*\d+%[^\r\n]*?\|\s*(\d+)\/(\d+)\s*\[([^\]]*)\]/g)].at(-1);
