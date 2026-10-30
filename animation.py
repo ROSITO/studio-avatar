@@ -8,6 +8,8 @@ import shutil
 import time
 import uuid
 
+PROMPT_DEFAUT = 'Preserve the character identity, appearance, clothing, background and lighting from the reference image. Animate the character following the movements and expressions of the driving video.'
+
 MODEL_ID = 'wan-animate2'
 MODEL_REPO = 'Wan-AI/Wan2.2-Animate-2-14B-Diffusers'
 RUNTIME_REVISION = '14f482c30c91021cc0e363a0a17a115b44972aee'
@@ -84,7 +86,8 @@ class Atelier:
         if not all(math.isfinite(x) for x in (start, length, total)) or start < 0 or not 1 <= length <= 3 or start + length > total + .04:
             raise ValueError('Choisissez un extrait de 1 à 3 secondes situé dans la vidéo.')
         prompt = str(d.get('prompt', '')).strip()
-        if not prompt or len(prompt) > 2000: raise ValueError('Décrivez l’apparence de l’avatar et son décor (1 à 2000 caractères).')
+        if len(prompt) > 2000: raise ValueError('La consigne complémentaire est limitée à 2000 caractères.')
+        prompt = prompt or PROMPT_DEFAUT
         seed = d.get('seed')
         if seed is None: seed = secrets.randbelow(2**31)
         if isinstance(seed, bool) or not isinstance(seed, int) or not 0 <= seed < 2**31: raise ValueError('Seed invalide.')

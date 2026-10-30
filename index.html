@@ -286,7 +286,8 @@ pre { background:#080c11; }
     <h3>2. Le personnage</h3>
     <label for="animation-avatar">Avatar</label><select id="animation-avatar" onchange="apercuAvatarPerformance()"></select>
     <img id="animation-photo" alt="Avatar de référence" hidden style="max-height:220px;max-width:100%;border-radius:12px">
-    <label for="animation-prompt">Apparence et décor de l’avatar</label><textarea id="animation-prompt" placeholder="Décrivez la personne, ses vêtements et son décor. Les gestes viennent de votre vidéo."></textarea>
+    <p class="mut">La photo sert de référence pour l’apparence, les vêtements et le décor. Vous n’avez rien à décrire.</p>
+    <details style="margin-top:16px"><summary>Consigne complémentaire (facultatif)</summary><label for="animation-prompt">Précision pour cet essai</label><textarea id="animation-prompt" maxlength="2000" placeholder="Laissez vide pour suivre la photo et les gestes de votre vidéo."></textarea></details>
     <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="animation-audio" style="width:auto;flex:none" checked> Conserver ma voix et le son de la vidéo</label>
     <details style="margin-top:16px"><summary>Seed avancée</summary><label for="animation-seed">Seed fixe (facultatif)</label><input id="animation-seed" type="number" min="0" max="2147483647" placeholder="Aléatoire à chaque essai"></details>
     <p class="mut">Poids sur le disque des modèles. Calcul dans un processus isolé, budget maximal de <span id="animation-budget">12</span> Gio et réserve système de 4 Gio. Cet essai peut être long.</p>
@@ -559,7 +560,7 @@ async function genererPerformance(){
   try{
     const seed=$('animation-seed').value;
     await api('/api/animation',{avatar:$('animation-avatar').value,video:$('animation-video').value,
-      debut:+$('animation-debut').value,duree:+$('animation-duree').value,prompt:$('animation-prompt').value,
+      debut:+$('animation-debut').value,duree:+$('animation-duree').value,prompt:$('animation-prompt').value.trim()||'Preserve the character identity, appearance, clothing, background and lighting from the reference image. Animate the character following the movements and expressions of the driving video.',
       conserver_audio:$('animation-audio').checked,seed:seed===''?null:+seed});
     await rafraichir(true);
   }catch(e){$('animation-erreur').textContent=e.message;}

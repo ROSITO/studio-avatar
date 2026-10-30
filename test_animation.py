@@ -39,8 +39,18 @@ class PerformanceTests(unittest.TestCase):
         with self.assertRaises(ValueError):self.a.valider(dict(self.data,video='escape.mp4'))
 
     def test_bounds_and_nonfinite(self):
-        for kw in (dict(debut=-1),dict(duree=.5),dict(duree=4),dict(debut=9.5),dict(duree=float('nan')),dict(debut=float('inf')),dict(seed=True),dict(seed=-1),dict(prompt='')):
+        for kw in (dict(debut=-1),dict(duree=.5),dict(duree=4),dict(debut=9.5),dict(duree=float('nan')),dict(debut=float('inf')),dict(seed=True),dict(seed=-1),dict(prompt='x'*2001)):
             with self.subTest(kw=kw),self.assertRaises(ValueError):self.a.valider(dict(self.data,**kw))
+
+    def test_description_facultative_utilise_la_photo(self):
+        for value in ('', '   '):
+            self.assertEqual(self.a.valider(dict(self.data,prompt=value))['prompt'],animation.PROMPT_DEFAUT)
+        sans=dict(self.data);sans.pop('prompt')
+        self.assertEqual(self.a.valider(sans)['prompt'],animation.PROMPT_DEFAUT)
+        self.assertEqual(self.a.valider(self.data)['prompt'],self.data['prompt'])
+        # The frontend fallback also works while an older server finishes a job.
+        html=(Path(__file__).parent/'index.html').read_text()
+        self.assertIn(animation.PROMPT_DEFAUT,html)
 
     def test_not_ready_does_not_enqueue(self):
         with patch.object(self.a,'etat',return_value=dict(pret=False,raison='Poids manquants')):
