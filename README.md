@@ -528,3 +528,31 @@ The direct reader passed exact row and FP32/BF16 quantized-kernel comparisons.
 A small warm-file microbenchmark measured 0.56 ms versus 1.01 ms per 4 MiB read;
 this does not predict full-generation time under memory pressure. Changes apply
 to newly started workers; an active generation is never restarted to apply them.
+
+### Metal synchronization and optional bounded residency
+
+On macOS 15+, new Drama workers enable `MLX_METAL_FAST_SYNCH=1` **before**
+importing MLX. An explicitly supplied value is preserved; set it to `0` for
+comparison. This affects synchronization, not precision or expert routing.
+See the [upstream MLX environment documentation](https://ml-explore.github.io/mlx/build/html/usage/environment_variables.html).
+
+Optional `STUDIO_DRAMA_WIRED_MB=128` keeps some existing Metal allocations
+resident. Default: **0**. Accepted range: 0–512 MiB, further capped at one
+sixteenth of the worker budget and Metal's recommended working set. Residency
+is refused at startup if macOS reports pressure or the 4 GiB system reserve
+would be reduced. The normal process supervisor remains active. No `sudo`,
+system-wide GPU limit changes, or higher worker memory budget are used.
+
+Reproduce the small GPU-only check in separate processes:
+
+```sh
+.venv-voix/bin/python tools/benchmark_drama_gpu.py --fast 0
+.venv-voix/bin/python tools/benchmark_drama_gpu.py --fast 1
+.venv-voix/bin/python tools/benchmark_drama_gpu.py --fast 1 --wired-mib 128
+```
+
+Local M3 Pro trials showed roughly 7–10% shorter GPU operation times with fast
+synchronization and identical output hashes. This benchmark uses about 105 MiB
+of active allocations and a 256 MiB allocator limit. It excludes weight reads
+and speech generation; it does **not** establish an end-to-end speedup. The
+small additional residency result is insufficient to enable residency by default.

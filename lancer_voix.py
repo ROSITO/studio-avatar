@@ -48,9 +48,12 @@ def main():
     d=json.loads(Path(sys.argv[1]).read_text())
     import memoire
     plafond=memoire.verifier(d['moteur'])
+    if d['moteur']=='drama3-mlx':
+        import drama_gpu
+        drama_gpu.preparer_environnement()
     import mlx.core as mx
     if d['moteur']=='drama3-mlx':
-        # CPU keeps MoE weights pageable instead of pinning the full model on Metal.
+        # Load lazily on CPU before installing the disk-backed GPU expert adapter.
         mx.set_default_device(mx.cpu)
         print('Drama 3 : chargement différé, experts lus sur disque',flush=True)
     memoire.configurer_mlx(mx,d['moteur'])
@@ -66,7 +69,7 @@ def main():
         modele=load_model(str(vue),lazy=d['moteur']=='drama3-mlx')
         if d['moteur']=='drama3-mlx' and mx.metal.is_available():
             # Codec convolutions have a very slow CPU fallback. Keep only this
-            # small component on Metal; the large MoE backbone stays on CPU.
+            # small component on Metal; expert banks are staged separately below.
             def sur_gpu(fn):
                 def appel(*args,**kwargs):
                     with mx.stream(mx.gpu):
@@ -80,6 +83,7 @@ def main():
             import drama_experts
             lecteur_experts=drama_experts.lecteur(plafond,actif=d.get('optimiser',True))
             drama_memoire.activer(mx,modele,vue,lecteur=lecteur_experts)
+            drama_gpu.configurer(mx,plafond)
             print('GPU : experts sélectionnés uniquement, banques conservées sur disque',flush=True)
         if d['moteur']=='drama3-mlx':
             import drama_cache
