@@ -287,7 +287,7 @@ pre { background:#080c11; }
     <label for="animation-avatar">Avatar</label><select id="animation-avatar" onchange="apercuAvatarPerformance()"></select>
     <img id="animation-photo" alt="Avatar de référence" hidden style="max-height:220px;max-width:100%;border-radius:12px">
     <label for="animation-prompt">Apparence et décor de l’avatar</label><textarea id="animation-prompt" placeholder="Décrivez la personne, ses vêtements et son décor. Les gestes viennent de votre vidéo."></textarea>
-    <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="animation-audio" checked> Conserver ma voix et le son de la vidéo</label>
+    <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="animation-audio" style="width:auto;flex:none" checked> Conserver ma voix et le son de la vidéo</label>
     <details style="margin-top:16px"><summary>Seed avancée</summary><label for="animation-seed">Seed fixe (facultatif)</label><input id="animation-seed" type="number" min="0" max="2147483647" placeholder="Aléatoire à chaque essai"></details>
     <p class="mut">Poids sur le disque des modèles. Calcul dans un processus isolé, budget maximal de <span id="animation-budget">12</span> Gio et réserve système de 4 Gio. Cet essai peut être long.</p>
     <p><button id="animation-generer" onclick="genererPerformance()" disabled>Transférer ma performance</button></p>
