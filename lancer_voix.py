@@ -26,6 +26,10 @@ def limite_drama(texte):
     from balises import parle
     return 1024 if len(parle(texte))>120 else 256
 
+def parametres_drama():
+    from drama_direction import ECHANTILLONNAGE
+    return dict(ECHANTILLONNAGE)
+
 def generer_flux(modele,d,out):
     """Decode causally without the CLI helper's forced audio playback."""
     import numpy as np
@@ -33,7 +37,8 @@ def generer_flux(modele,d,out):
     import audio_partiel
     morceaux=[];total=0;pcm=bytearray()
     for resultat in modele.generate(text=d['texte'],ref_audio=d['reference'],ref_text=d['transcription'],
-            stream=True,streaming_interval=1.0,max_tokens=limite_drama(d['texte'])):
+            stream=True,streaming_interval=1.0,max_tokens=limite_drama(d['texte']),
+            **parametres_drama()):
         morceau=np.array(resultat.audio)
         morceaux.append(morceau);total+=len(morceau)
         pcm.extend(np.asarray(morceau,dtype='<f4').tobytes())
@@ -86,6 +91,9 @@ def main():
             drama_gpu.configurer(mx,plafond)
             print('GPU : experts sélectionnés uniquement, banques conservées sur disque',flush=True)
         if d['moteur']=='drama3-mlx':
+            import drama_direction
+            drama_direction.installer()
+            print('Direction vocale : tags conservés, consignes reprises après découpage ; température 1.0, top-p 0.9, top-k 30',flush=True)
             import drama_cache
             drama_cache.installer(mx,modele,d)
             import drama_contexte
@@ -117,7 +125,8 @@ def main():
         if flux:generer_flux(modele,d,out)
         else:
             generate_audio(model=modele,text=d['texte'],ref_audio=d['reference'],ref_text=d['transcription'],lang_code=lang,
-                output_path=str(out.parent),file_prefix=out.stem,audio_format='wav',join_audio=True,play=False,stream=False,max_tokens=limite_drama(d['texte']) if d['moteur']=='drama3-mlx' else 4096,verbose=True)
+                output_path=str(out.parent),file_prefix=out.stem,audio_format='wav',join_audio=True,play=False,stream=False,max_tokens=limite_drama(d['texte']) if d['moteur']=='drama3-mlx' else 4096,verbose=True,
+                **(parametres_drama() if d['moteur']=='drama3-mlx' else {}))
         if not out.is_file() or out.stat().st_size<44:raise RuntimeError('La synthèse a échoué : aucune prise produite.')
     if d['moteur']=='drama3-mlx':
         stats=lecteur_experts.stats;cache=lecteur_experts.cache

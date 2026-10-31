@@ -73,5 +73,9 @@ def pour_voix(texte,moteur,visuelles):
         tag=m[0][1:-1].strip()
         # Explicit namespace permits vocal emotion even when its name is a visual TAG.
         if tag.lower().startswith('voice:'):return '['+tag.split(':',1)[1].strip()+']'
-        return ' ' if tag.lower() in visuelles else m[0]
-    return ' '.join(re.sub(PATTERN,remplacer,texte or '').split())
+        # Plain emotion cues also direct the voice; visual parsing is independent.
+        return m[0]
+    resultat=re.sub(PATTERN,remplacer,texte or '')
+    resultat=re.sub(r'([^\S\n])+',' ',resultat).strip()
+    # Legacy explicit voice namespace may duplicate an adjacent plain cue.
+    return re.sub(r'(\[[^\]]+\])(?:[ \t]+\1)+',r'\1',resultat)

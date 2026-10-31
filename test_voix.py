@@ -73,7 +73,7 @@ class VoixIntegreesTest(unittest.TestCase):
         python=self.fixture.root/'python';python.touch();self.atelier.python=python
         profils=self.atelier.lire();profils[0].pop('moteur_origine',None);self.atelier.sauver(profils)
         texte='[curious] Bonjour. [laughs] On recommence !'
-        for moteur,attendu in [('drama3-mlx','Bonjour. [laughs] On recommence !'),('qwen3-tts-mlx','Bonjour. On recommence !')]:
+        for moteur,attendu in [('drama3-mlx','[curious] Bonjour. [laughs] On recommence !'),('qwen3-tts-mlx','Bonjour. On recommence !')]:
             with self.subTest(moteur=moteur):
                 t=dict(id='abcdef123456',modeles=dict(synthese=dict(id=moteur,path='local',installe=True)))
                 out=studio.ICI/'audios'/(moteur+'.wav')
