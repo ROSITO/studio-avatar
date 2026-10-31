@@ -518,11 +518,13 @@ hidden states and cache states. This is a preparation benchmark, **not** an
 end-to-end speech speedup claim. The normal serialized task queue and memory
 supervisor also apply to diagnostic measurements.
 
-The optional CPU expert-row cache remains **off by default**. In one local
-same-text/same-seed trial, a 768 MiB cache reduced reads from 33.10 to 22.67 GiB
-but increased total time from 167.99 to 198.71 s. For controlled experiments only,
-`STUDIO_DRAMA_EXPERT_CACHE_MB` accepts 0–1024 MiB and is additionally capped at
-one sixteenth of the worker budget. Memory pressure clears cached rows.
+The CPU expert-row cache defaults to **1024 MiB**, capped at one eighth of
+its worker memory budget. It retains a stable subset of experts between decode
+frames instead of replacing the cache on every pass through the layers.
+`STUDIO_DRAMA_EXPERT_CACHE_MB` accepts 0–1024 MiB; 0 disables it. Memory pressure
+clears cached rows, and the total worker budget is unchanged. An older LRU-cache
+trial reduced reads but increased total time; no full-generation speedup has yet
+been measured for the new stable-subset policy.
 
 The direct reader passed exact row and FP32/BF16 quantized-kernel comparisons.
 A small warm-file microbenchmark measured 0.56 ms versus 1.01 ms per 4 MiB read;

@@ -37,10 +37,10 @@ class CacheExperts:
 
 def lecteur(plafond, actif=True):
     import numpy as np
-    try:configured=float(os.environ.get('STUDIO_DRAMA_EXPERT_CACHE_MB','512'))
+    try:configured=float(os.environ.get('STUDIO_DRAMA_EXPERT_CACHE_MB','1024'))
     except ValueError:raise ValueError('STUDIO_DRAMA_EXPERT_CACHE_MB invalide.')
     if not 0<=configured<=1024:raise ValueError('Cache expert : entre 0 et 1024 Mio.')
-    cache=CacheExperts(int(min(configured*1024**2,plafond/16)) if actif else 0)
+    cache=CacheExperts(int(min(configured*1024**2,plafond/8)) if actif else 0)
     print(f'Cache experts : {cache.plafond/1024**2:.0f} Mio maximum',flush=True)
     from drama_lecture import LectureDirecte
     direct = LectureDirecte() if actif and os.environ.get('STUDIO_DRAMA_DIRECT_READ', '1') == '1' else None

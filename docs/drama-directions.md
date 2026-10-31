@@ -29,8 +29,8 @@ boundaries, exact cache reuse and memory-pressure eviction.
 ## Feeding the GPU
 
 Routed expert matrix multiplication already runs on Metal. A CPU cache now
-defaults to 512 MiB (`STUDIO_DRAMA_EXPERT_CACHE_MB=0` disables it), additionally
-limited to one sixteenth of the worker memory budget. It retains a stable subset
+defaults to 1024 MiB (`STUDIO_DRAMA_EXPERT_CACHE_MB=0` disables it), additionally
+limited to one eighth of the worker memory budget. It retains a stable subset
 of expert rows rather than evicting all previous layers on every decode frame.
 This avoids repeated disk reads for retained experts without changing their
 values. The existing pressure guard releases the cache when needed. This does

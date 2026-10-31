@@ -22,10 +22,10 @@ class CacheVitesseTest(unittest.TestCase):
         import drama_experts
         with patch.dict('os.environ',{},clear=True):
             read=drama_experts.lecteur(12*1024**3)
-            self.assertEqual(read.cache.plafond,512*1024**2)
+            self.assertEqual(read.cache.plafond,1024*1024**2)
             read.close()
             read=drama_experts.lecteur(4*1024**3)
-            self.assertEqual(read.cache.plafond,256*1024**2)
+            self.assertEqual(read.cache.plafond,512*1024**2)
             read.close()
         with patch.dict('os.environ',{'STUDIO_DRAMA_EXPERT_CACHE_MB':'0'}):
             read=drama_experts.lecteur(12*1024**3)
