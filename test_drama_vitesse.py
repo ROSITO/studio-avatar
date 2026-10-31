@@ -8,6 +8,23 @@ from unittest.mock import patch
 
 @unittest.skipUnless(importlib.util.find_spec('mlx_audio'),'Optional MLX voice runtime')
 class CacheVitesseTest(unittest.TestCase):
+    def test_cache_plein_ne_copie_pas_les_experts_refuses(self):
+        import numpy as np
+        import drama_experts
+        with tempfile.TemporaryDirectory() as tmp:
+            p=Path(tmp)/'weights.bin'
+            data=np.arange(8*32,dtype=np.uint32).reshape(8,32)
+            p.write_bytes(data.tobytes());banks={'weight':((p,'uint32',0,data.shape),None)}
+            with patch.dict('os.environ',{'STUDIO_DRAMA_EXPERT_CACHE_MB':'1','STUDIO_DRAMA_COPY_REDUCTION':'1'}):
+                read=drama_experts.lecteur(12*1024**3)
+            read.cache.plafond=data[0].nbytes
+            with patch.object(read.cache,'verifier',return_value=True):
+                read(banks,np.array([0]),'module')
+                with patch.object(read.cache,'put',side_effect=AssertionError('Cache plein')):
+                    np.testing.assert_array_equal(read(banks,np.array([1,2]),'module')['weight'],data[[1,2]])
+                    np.testing.assert_array_equal(read(banks,np.array([0,3]),'module')['weight'],data[[0,3]])
+            read.close()
+
     def test_cache_retient_un_sous_ensemble_entre_les_couches(self):
         import numpy as np
         import drama_experts

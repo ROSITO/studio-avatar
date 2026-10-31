@@ -6,6 +6,37 @@ from pathlib import Path
 
 @unittest.skipUnless(importlib.util.find_spec('mlx_audio'), 'Optional MLX voice runtime')
 class ExpertsDisqueTest(unittest.TestCase):
+    def test_bloc_gpu_chevauche_identique_au_bloc_natif(self):
+        import mlx.core as mx
+        import mlx.nn as nn
+        from mlx.utils import tree_flatten
+        from mlx_audio.lm.models.switch_layers import QuantizedSwitchLinear,SwitchGLU
+        from mlx_audio.tts.models.fish_drama3 import drama3
+        from unittest.mock import patch
+        import drama_memoire
+        projection,bloc=QuantizedSwitchLinear.__call__,SwitchGLU.__call__
+        device=mx.default_device();chunk=drama3.PREFILL_CHUNK
+        try:
+            for tokens in (1,10):
+                QuantizedSwitchLinear.__call__=projection;SwitchGLU.__call__=bloc
+                mx.set_default_device(mx.cpu)
+                model=nn.Module();model.backbone=nn.Module()
+                model.backbone.switch_mlp=SwitchGLU(128,256,8)
+                nn.quantize(model,group_size=64,bits=4)
+                x=mx.random.normal((tokens,128)).astype(mx.bfloat16)
+                indices=mx.array([[1,3,1,7]]*tokens)
+                with mx.stream(mx.gpu):
+                    expected=model.backbone.switch_mlp(x,indices);mx.eval(expected)
+                with tempfile.TemporaryDirectory() as folder:
+                    mx.save_safetensors(str(Path(folder)/'model.safetensors'),dict(tree_flatten(model.parameters())))
+                    with patch.dict('os.environ',{'STUDIO_DRAMA_OVERLAP':'1'}):
+                        drama_memoire.activer(mx,model,folder)
+                    actual=model.backbone.switch_mlp(x,indices)
+                    self.assertTrue(mx.array_equal(actual,expected).item())
+        finally:
+            QuantizedSwitchLinear.__call__=projection;SwitchGLU.__call__=bloc
+            mx.set_default_device(device);drama3.PREFILL_CHUNK=chunk
+
     def test_routage_fp32_et_bfloat16(self):
         import mlx.core as mx
         import mlx.nn as nn

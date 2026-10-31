@@ -78,6 +78,7 @@ def lecteur(plafond, actif=True):
     direct = LectureDirecte() if actif and os.environ.get('STUDIO_DRAMA_DIRECT_READ', '1') == '1' else None
     print('Lecture experts : '+('directe, sans mapping complet' if direct is not None else 'mapping temporaire'),flush=True)
     stats=dict(octets_lus=0,secondes_lecture=0.0,appels=0)
+    optimiser_copies=os.environ.get('STUDIO_DRAMA_COPY_REDUCTION','1')!='0'
 
     def lire(banques,uniques,identifiant):
         start=time.perf_counter();stats['appels']+=1
@@ -104,8 +105,12 @@ def lecteur(plafond, actif=True):
             for i,expert in enumerate(missing):
                 row={key:array[i] for key,array in loaded.items()}
                 found[expert]=row
-                if active:cache.put((identifiant,expert),{k:np.array(v,copy=True) for k,v in row.items()})
-        if not active:
+                # Avoid allocating an entire expert copy just to have a full
+                # cache reject it. Missing experts cannot already be cached.
+                admissible=cache.octets+sum(v.nbytes for v in row.values())<=cache.plafond
+                if active and (not optimiser_copies or admissible):
+                    cache.put((identifiant,expert),{k:np.array(v,copy=True) for k,v in row.items()})
+        if not active or (optimiser_copies and len(missing)==len(uniques)):
             result=loaded  # All rows were read in the original sorted order.
         else:
             result={key:np.stack([found[int(e)][key] for e in uniques]) for key in banques}

@@ -62,3 +62,32 @@ adaptive versus 69.48 s fixed, with process peaks of 10.63 and 9.23 GiB. Source
 bytes read fell from 45.92 to 39.65 GiB (about 14%). This is a short local test,
 not a general model benchmark; run-to-run variability is visible even between
 the two fixed trials. Adaptive mode remains opt-in because no speedup was shown.
+
+## Expert staging experiments
+
+The expert reader avoids copying rows that a full cache would reject. When every
+requested row is newly read, it also reuses the ordered read buffer instead of
+stacking a second copy. `STUDIO_DRAMA_COPY_REDUCTION=0` restores the old path for
+diagnostics. A short fixed-cache pair measured 81.04 versus 81.49 seconds and
+process peaks of 9.77 versus 9.13 GiB. Audio samples were identical; this supports
+keeping the allocation reduction, not a speech speedup claim.
+
+Experimental `STUDIO_DRAMA_OVERLAP=1` submits routed projections asynchronously
+and waits at each SwitchGLU block boundary, bounding outstanding work to one
+block. Standalone projections retain synchronous evaluation. A native block test
+covers duplicate routes and BF16 inputs; the full short take was bit-identical.
+A warm run took 83.62 seconds, with a subsequent synchronous warm control taking
+99.83 seconds. Other controls ranged around 80 seconds: this variability is too
+large to establish a reliable gain. Overlap stays off by default.
+
+Changing the staging adapter invalidates the exact reference-prefix cache. Its
+first synchronous run took 228.77 seconds including 139.43 seconds rebuilding
+that prefix; this cold result must not be compared with warm runs as a speedup.
+
+A separate 16 GiB worker-budget trial allowed the adaptive cache to reach 4 GiB.
+It took 114.04 seconds, read 30.44 GiB of expert source bytes, and peaked at
+12.32 GiB process memory. Audio was identical. It did not justify increasing the
+normal 12 GiB budget or enabling adaptive caching. These are short local trials,
+not general benchmarks or proof of the individual cause of each time difference.
+Native stack samples during preparation and decoding showed substantial time in
+positional weight reads, supporting further investigation of the staging path.
