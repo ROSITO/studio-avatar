@@ -520,11 +520,15 @@ supervisor also apply to diagnostic measurements.
 
 The CPU expert-row cache defaults to **1024 MiB**, capped at one eighth of
 its worker memory budget. It retains a stable subset of experts between decode
-frames instead of replacing the cache on every pass through the layers.
-`STUDIO_DRAMA_EXPERT_CACHE_MB` accepts 0–1024 MiB; 0 disables it. Memory pressure
-clears cached rows, and the total worker budget is unchanged. An older LRU-cache
-trial reduced reads but increased total time; no full-generation speedup has yet
-been measured for the new stable-subset policy.
+frames. `STUDIO_DRAMA_EXPERT_CACHE_MB` accepts 0–1024 MiB; 0 disables it. Memory
+pressure clears cached rows, and the total worker budget is unchanged.
+Experimental `STUDIO_DRAMA_ADAPTIVE_CACHE=1` allows gradual growth, limited by
+actual process footprint, system memory and a conservative model allowance.
+At a 12 GiB worker budget it permits at most a 2 GiB cache; the absolute maximum
+is 4 GiB with a larger worker budget. It shrinks immediately when headroom falls.
+A short same-seed trial produced identical audio but took 71.95 s adaptive versus
+69.48 s fixed, so adaptive mode remains **off by default**. See
+[the measured comparison](docs/drama-directions.md#local-comparison).
 
 The direct reader passed exact row and FP32/BF16 quantized-kernel comparisons.
 A small warm-file microbenchmark measured 0.56 ms versus 1.01 ms per 4 MiB read;

@@ -28,11 +28,37 @@ boundaries, exact cache reuse and memory-pressure eviction.
 
 ## Feeding the GPU
 
-Routed expert matrix multiplication already runs on Metal. A CPU cache now
-defaults to 1024 MiB (`STUDIO_DRAMA_EXPERT_CACHE_MB=0` disables it), additionally
-limited to one eighth of the worker memory budget. It retains a stable subset
-of expert rows rather than evicting all previous layers on every decode frame.
-This avoids repeated disk reads for retained experts without changing their
-values. The existing pressure guard releases the cache when needed. This does
-not change an already running worker; the next generation loads the new policy.
-No end-to-end speedup has yet been measured for this default.
+Routed expert matrix multiplication already runs on Metal. The CPU expert cache
+defaults to a fixed 1024 MiB. Experimental adaptive mode starts at that size and
+can adapt up to 4 GiB, additionally capped at one third of the worker budget and
+leaving a conservative 10 GiB allowance for the model and transient buffers.
+With a 12 GiB worker budget the adaptive maximum is therefore 2 GiB. Every second
+it checks actual process footprint and system memory.
+It grows by at most 256 MiB per check, retaining two GiB of worker headroom and
+six GiB of available system memory. It can shrink below its initial size or clear
+entirely when there is insufficient headroom, then recover later. The process
+watchdog and fixed total worker budget remain in force.
+
+`STUDIO_DRAMA_ADAPTIVE_CACHE=1` enables the experiment; its default is 0.
+`STUDIO_DRAMA_EXPERT_CACHE_MB` (0–1024 MiB) sets the fixed or initial cache size.
+A zero fixed cache disables expert caching.
+
+The cache retains a stable subset of expert rows between decode frames, avoiding
+repeated disk reads for retained experts without changing their values. Pressure
+also limits the adaptive cache to its initial size, and clears it if the existing
+pressure guard considers memory unsafe. Changes apply to newly started workers;
+a running generation is never restarted to apply them.
+
+### Local comparison
+
+A short same-text, same-reference, same-seed trial produced bit-identical audio
+samples in fixed and adaptive modes (4.226 s). The initial adaptive attempt
+reached a 3.5 GiB cache limit: 72.10 s total versus 60.75 s fixed, with a process
+peak of 11.95 GiB versus 9.43 GiB. It reduced source bytes read by about 30%, but
+did not reduce elapsed time. That growth limit is no longer admitted at 12 GiB.
+
+After adding the conservative model allowance, a second pair measured 71.95 s
+adaptive versus 69.48 s fixed, with process peaks of 10.63 and 9.23 GiB. Source
+bytes read fell from 45.92 to 39.65 GiB (about 14%). This is a short local test,
+not a general model benchmark; run-to-run variability is visible even between
+the two fixed trials. Adaptive mode remains opt-in because no speedup was shown.
