@@ -10,7 +10,7 @@ ECHANTILLONNAGE = dict(temperature=1.0, top_p=0.9, top_k=30)
 PONCTUELLES = frozenset((
     'sighs', 'laughs', 'chuckling', 'small laugh', 'sobbing', 'crying loudly',
     'gasping', 'panting', 'groaning', 'clear throat', 'shaky breath', 'breath',
-    'short pause', 'pause', 'long pause', 'soupir', 'rire', 'respiration',
+    'short pause', 'pause', 'long pause', 'soupir', 'rire', 'petit rire', 'rire discret', 'respiration',
 ))
 TAG = re.compile(r'\[([^\[\]]+)\]')
 FIN = re.compile(r'(?:\s*\[[^\[\]]+\])+\s*$')

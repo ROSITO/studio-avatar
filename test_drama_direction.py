@@ -16,6 +16,11 @@ class DirectionTest(unittest.TestCase):
         self.assertEqual(' '.join(actual).count('[laughs]'), 1)
         self.assertEqual(balises.parle(' '.join(actual)), balises.parle(' '.join(chunks)))
 
+    def test_petit_rire_garde_emotion_sans_se_repeter(self):
+        chunks=['[amusée] Bonjour.', '[petit rire] Encore.', 'La suite.']
+        actual=direction.decouper('',lambda _:chunks)
+        self.assertEqual(actual,['[amusée] Bonjour.', '[amusée] [petit rire] Encore.', '[amusée] La suite.'])
+
     def test_multilocuteur_inchange(self):
         chunks = ['<|speaker:0|> [happy] Bonjour.', '<|speaker:1|> Salut.']
         self.assertEqual(direction.decouper(' '.join(chunks), lambda _: chunks), chunks)
