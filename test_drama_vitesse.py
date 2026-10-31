@@ -8,6 +8,30 @@ from unittest.mock import patch
 
 @unittest.skipUnless(importlib.util.find_spec('mlx_audio'),'Optional MLX voice runtime')
 class CacheVitesseTest(unittest.TestCase):
+    def test_cache_retient_un_sous_ensemble_entre_les_couches(self):
+        import numpy as np
+        import drama_experts
+        cache=drama_experts.CacheExperts(16)
+        for layer in range(20):
+            cache.put((layer,0), {'weight':np.arange(4,dtype=np.uint32)})
+        self.assertEqual(cache.octets,16)
+        self.assertIsNotNone(cache.get((0,0)))
+        self.assertIsNone(cache.get((19,0)))
+
+    def test_cache_par_defaut_borne_et_desactivable(self):
+        import drama_experts
+        with patch.dict('os.environ',{},clear=True):
+            read=drama_experts.lecteur(12*1024**3)
+            self.assertEqual(read.cache.plafond,512*1024**2)
+            read.close()
+            read=drama_experts.lecteur(4*1024**3)
+            self.assertEqual(read.cache.plafond,256*1024**2)
+            read.close()
+        with patch.dict('os.environ',{'STUDIO_DRAMA_EXPERT_CACHE_MB':'0'}):
+            read=drama_experts.lecteur(12*1024**3)
+            self.assertEqual(read.cache.plafond,0)
+            read.close()
+
     def test_lecture_cachee_identique_et_bornee(self):
         import numpy as np
         import drama_experts

@@ -28,14 +28,16 @@ class CacheExperts:
         size=sum(a.nbytes for a in value.values())
         if size>self.plafond:return
         if key in self.lru:self.octets-=sum(a.nbytes for a in self.lru.pop(key).values())
-        while self.lru and self.octets+size>self.plafond:
-            _,old=self.lru.popitem(last=False);self.octets-=sum(a.nbytes for a in old.values())
+        # A decode visits all model layers in order. LRU eviction would replace
+        # the entire cache every frame when the working set exceeds its size.
+        # Retain a bounded subset instead, reusable on the next decode frame.
+        if self.octets+size>self.plafond:return
         self.lru[key]=value;self.octets+=size
 
 
 def lecteur(plafond, actif=True):
     import numpy as np
-    try:configured=float(os.environ.get('STUDIO_DRAMA_EXPERT_CACHE_MB','0'))
+    try:configured=float(os.environ.get('STUDIO_DRAMA_EXPERT_CACHE_MB','512'))
     except ValueError:raise ValueError('STUDIO_DRAMA_EXPERT_CACHE_MB invalide.')
     if not 0<=configured<=1024:raise ValueError('Cache expert : entre 0 et 1024 Mio.')
     cache=CacheExperts(int(min(configured*1024**2,plafond/16)) if actif else 0)

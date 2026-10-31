@@ -25,3 +25,14 @@ Validation: `python3 -m unittest test_drama_direction test_balises test_voix`.
 With the optional voice runtime, also run `test_drama_progression`,
 `test_drama_vitesse` and `test_drama_cache` to check native splitting, progress
 boundaries, exact cache reuse and memory-pressure eviction.
+
+## Feeding the GPU
+
+Routed expert matrix multiplication already runs on Metal. A CPU cache now
+defaults to 512 MiB (`STUDIO_DRAMA_EXPERT_CACHE_MB=0` disables it), additionally
+limited to one sixteenth of the worker memory budget. It retains a stable subset
+of expert rows rather than evicting all previous layers on every decode frame.
+This avoids repeated disk reads for retained experts without changing their
+values. The existing pressure guard releases the cache when needed. This does
+not change an already running worker; the next generation loads the new policy.
+No end-to-end speedup has yet been measured for this default.
