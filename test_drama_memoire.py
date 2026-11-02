@@ -78,6 +78,20 @@ class ExpertsDisqueTest(unittest.TestCase):
         finally:
             QuantizedSwitchLinear.__call__=appel;mx.set_default_device(device);drama3.PREFILL_CHUNK=chunk
 
+    def test_flux_silence_prolonge_arrete_et_sauve_partiel(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        import numpy as np
+        from lancer_voix import generer_flux
+        import audio_partiel
+        model=SimpleNamespace(sample_rate=10,generate=lambda **kw:iter([SimpleNamespace(audio=np.ones(20,dtype=np.float32)*.1)]+[SimpleNamespace(audio=np.zeros(10,dtype=np.float32)) for _ in range(10)]))
+        with tempfile.TemporaryDirectory() as folder,patch('mlx_audio.audio_io.write') as write:
+            out=Path(folder)/'essai.wav'
+            with self.assertRaisesRegex(RuntimeError,'silence prolongé'):
+                generer_flux(model,dict(texte='a'*200,reference='x',transcription='x'),out)
+            self.assertTrue(audio_partiel.chemin(out).exists())
+            write.assert_not_called()
+
     def test_flux_audio_concatene_sans_silence_et_sans_lecteur(self):
         from types import SimpleNamespace
         from unittest.mock import Mock,patch

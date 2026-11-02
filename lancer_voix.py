@@ -35,7 +35,7 @@ def generer_flux(modele,d,out):
     import numpy as np
     from mlx_audio.audio_io import write
     import audio_partiel
-    morceaux=[];total=0;pcm=bytearray()
+    morceaux=[];total=0;pcm=bytearray();silence=0
     for resultat in modele.generate(text=d['texte'],ref_audio=d['reference'],ref_text=d['transcription'],
             stream=True,streaming_interval=1.0,max_tokens=limite_drama(d['texte']),
             **parametres_drama()):
@@ -44,6 +44,12 @@ def generer_flux(modele,d,out):
         pcm.extend(np.asarray(morceau,dtype='<f4').tobytes())
         audio_partiel.sauver(out,pcm,int(modele.sample_rate))
         print(f'Audio décodé : {total/modele.sample_rate:.2f} s (sauvegardé)',flush=True)
+        # A runaway decoder can miss EOS and fill its frame budget with silence.
+        # Stop with a recoverable partial, never label that padded take complete.
+        silencieux=len(morceau)>0 and float(np.max(np.abs(morceau)))<.001 and float(np.sqrt(np.mean(morceau.astype(np.float64)**2)))<.0001
+        silence=silence+len(morceau) if silencieux else 0
+        if silence>=8*modele.sample_rate:
+            raise RuntimeError('Drama produit un silence prolongé (8 secondes) : synthèse arrêtée, audio partiel sauvegardé. La prise doit être relancée.')
     if not morceaux:raise RuntimeError('Aucun audio généré')
     write(str(out),np.concatenate(morceaux),modele.sample_rate,format='wav')
 
