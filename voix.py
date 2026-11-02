@@ -44,7 +44,13 @@ class Atelier:
         return dict(ok=True,actif=moteur,engines=engines)
     def liste(self):
         c=self.catalogue();pret=next(e['available'] for e in c['engines'] if e['id']==c['actif'])
-        return dict(ok=pret,voix=self.lire(),moteur=c['actif'],engines=c['engines'])
+        return dict(ok=pret,voix=self.lire(),moteur=c['actif'],engines=c['engines'],lots=self.lots())
+    def lots(self):
+        with self.s.VERROU:
+            candidates=[t for t in self.s.TACHES if t.get('type')=='voix' and t.get('params',{}).get('lot')]
+            ids=list(dict.fromkeys(t['params']['lot'] for t in candidates))[-20:]
+            return [dict(id=t['id'],etat=t['etat'],etape=t.get('etape'),erreur=t.get('erreur'),resultat=t.get('resultat'),
+                params={k:t['params'][k] for k in ('lot','nom_fichier','ordre','taille_lot')}) for t in candidates if t['params']['lot'] in ids]
     def profil(self,pid):
         p=next((p for p in self.lire() if pid in (p['id'],p.get('ancien_id'))),None)
         if not p:raise ValueError('Profil vocal introuvable dans Mes voix.')
@@ -137,19 +143,49 @@ class Atelier:
             partiel=audio_partiel.chemin(brut)
             for f in (req,brut,brut.with_suffix('.json'),tmp,partiel.with_suffix('.tmp.wav')):f.unlink(missing_ok=True)
             if not t.get('erreur_sauvegarde_partielle'):partiel.unlink(missing_ok=True)
-    def essai(self,d):
+    def preparer_essai(self,d,modeles=None):
         profil=self.profil(d.get('profil'));texte=str(d.get('texte','')).strip()
         if not texte or len(texte)>5000:raise ValueError('Saisissez entre 1 et 5000 caractères.')
         if not isinstance(d.get('mesurer_contexte',False),bool):raise ValueError('mesurer_contexte doit être un booléen.')
         if not isinstance(d.get('optimiser',True),bool):raise ValueError('optimiser doit être un booléen.')
         seed=d.get('seed')
         if seed is not None and (isinstance(seed,bool) or not isinstance(seed,int) or not 0<=seed<2**31):raise ValueError('Seed vocale : entier entre 0 et 2147483647.')
-        t=dict(id=uuid.uuid4().hex[:12],type='voix_mesure' if d.get('mesurer_contexte') else 'voix',params=dict(profil=profil['id'],texte=texte,langue=profil['langue']),modeles=self.s.GESTION_MODELES.selection(),etat='en attente',cree=time.time())
+        t=dict(id=uuid.uuid4().hex[:12],type='voix_mesure' if d.get('mesurer_contexte') else 'voix',params=dict(profil=profil['id'],texte=texte,langue=profil['langue']),modeles=modeles if modeles is not None else self.s.GESTION_MODELES.selection(),etat='en attente',cree=time.time())
         if 'optimiser' in d:t['params']['optimiser']=d['optimiser']
         if seed is not None:t['params']['seed']=seed
+        return t
+    def essai(self,d):
+        t=self.preparer_essai(d)
         with self.s.VERROU:self.s.TACHES.append(t)
         self.s.sauver()
         return t
+    def lot(self,d):
+        fichiers=d.get('fichiers')
+        if not isinstance(fichiers,list) or not 1<=len(fichiers)<=20:
+            raise ValueError('Choisissez entre 1 et 20 fichiers texte.')
+        profil=self.profil(d.get('profil'));modeles=self.s.GESTION_MODELES.selection()
+        choix=modeles.get('synthese',{})
+        if choix.get('id') not in ENGINES or not choix.get('installe'):
+            raise ValueError('Installez et sélectionnez un moteur vocal dans Modèles.')
+        if profil.get('moteur_origine') and profil['moteur_origine']!=choix['id']:
+            raise ValueError('Cette voix utilise un autre moteur. Sélectionnez son moteur dans Modèles.')
+        lot=uuid.uuid4().hex[:12];taches=[]
+        for i,fichier in enumerate(fichiers):
+            if not isinstance(fichier,dict):raise ValueError('Fichier texte invalide.')
+            nom=fichier.get('nom');texte=fichier.get('texte')
+            if not isinstance(nom,str) or not nom or len(nom)>200 or '/' in nom or '\\' in nom or any(ord(c)<32 for c in nom) or Path(nom).suffix.lower() not in ('.txt','.md'):
+                raise ValueError('Fichier attendu : .txt ou .md avec un nom simple.')
+            if not isinstance(texte,str):raise ValueError(nom+' : contenu texte invalide.')
+            texte=texte.removeprefix('\ufeff').strip()
+            if '\x00' in texte:raise ValueError(nom+' : fichier texte UTF-8 attendu.')
+            try:t=self.preparer_essai(dict(profil=profil['id'],texte=texte),modeles)
+            except ValueError as exc:raise ValueError(nom+' : '+str(exc)) from exc
+            t['params'].update(lot=lot,nom_fichier=nom,ordre=i+1,taille_lot=len(fichiers))
+            taches.append(t)
+        # Validate every file before adding anything to the serialized queue.
+        with self.s.VERROU:self.s.TACHES.extend(taches)
+        self.s.sauver()
+        return dict(lot=lot,ajoutees=len(taches),taches=[t['id'] for t in taches])
     def executer(self,t):
         p=t['params'];out=self.s.ICI/'audios'/('voix-'+t['id']+'.wav')
         self.generer(t,p['texte'],p['profil'],p['langue'],out,seed=p.get('seed',int(t['id'][:8],16)%2147483648))

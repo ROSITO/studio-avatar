@@ -16,6 +16,35 @@ class VoixIntegreesTest(unittest.TestCase):
         subprocess.run(['ffmpeg','-v','error','-y','-f','lavfi','-i','sine=frequency=440:duration=3',str(ref)],check=True)
         self.profil=self.atelier.enregistrer(dict(nom='Ma voix',texte='Bonjour depuis la référence.',reference='ref.wav',langue='fr'))
     def tearDown(self):self.fixture.tearDown()
+    def test_lot_validation_atomique_tags_ordre_et_modele_fige(self):
+        selection=dict(synthese=dict(id='qwen3-tts-mlx',path='local',installe=True))
+        with patch.object(studio.GESTION_MODELES,'selection',return_value=selection):
+            avant=len(studio.TACHES)
+            with self.assertRaisesRegex(ValueError,'vide.txt'):
+                self.atelier.lot(dict(profil=self.profil['id'],fichiers=[dict(nom='bon.txt',texte='Bonjour'),dict(nom='vide.txt',texte='')]))
+            self.assertEqual(len(studio.TACHES),avant)
+            r=self.atelier.lot(dict(profil=self.profil['id'],fichiers=[dict(nom='Une.txt',texte='\ufeff[amusée] Bonjour.'),dict(nom='Deux.md',texte='<emphasis>Salut</emphasis> !')]))
+        ts=studio.TACHES[avant:]
+        self.assertEqual(r['ajoutees'],2);self.assertEqual(r['taches'],[t['id'] for t in ts])
+        self.assertEqual([t['params']['ordre'] for t in ts],[1,2])
+        self.assertTrue(all(t['modeles']==selection and t['etat']=='en attente' for t in ts))
+        self.assertEqual(ts[0]['params']['texte'],'[amusée] Bonjour.')
+        self.assertEqual(ts[1]['params']['texte'],'<emphasis>Salut</emphasis> !')
+        self.assertEqual([t['params']['lot'] for t in ts],[r['lot']]*2)
+        self.assertEqual(len(self.atelier.lots()),2)
+        self.assertNotIn('texte',self.atelier.lots()[0]['params'])
+
+    def test_lot_refuse_formats_noms_contenus_et_moteur_incompatible(self):
+        selection=dict(synthese=dict(id='qwen3-tts-mlx',path='local',installe=True))
+        with patch.object(studio.GESTION_MODELES,'selection',return_value=selection):
+            for nom,texte in [('x.pdf','Bonjour'),('../x.txt','Bonjour'),('a\\b.txt','Bonjour'),('x.txt','x'*5001),('x.txt','a\0b')]:
+                with self.subTest(nom=nom),self.assertRaises(ValueError):
+                    self.atelier.lot(dict(profil=self.profil['id'],fichiers=[dict(nom=nom,texte=texte)]))
+            for fichiers in ([],[dict(nom='x.txt',texte='x')]*21,{},[None]):
+                with self.assertRaises(ValueError):self.atelier.lot(dict(profil=self.profil['id'],fichiers=fichiers))
+            profils=self.atelier.lire();profils[0]['moteur_origine']='drama3-mlx';self.atelier.sauver(profils)
+            with self.assertRaisesRegex(ValueError,'autre moteur'):
+                self.atelier.lot(dict(profil=self.profil['id'],fichiers=[dict(nom='x.txt',texte='Bonjour')]))
     def test_vue_modele_exclut_appledouble_sans_copier_les_poids(self):
         from lancer_voix import vue_modele
         source=self.fixture.root/'poids';source.mkdir();(source/'speech_tokenizer').mkdir()

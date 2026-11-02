@@ -512,6 +512,7 @@ class H(BaseHTTPRequestHandler):
                 if action=='enregistrer': resultat=ATELIER_VOIX.enregistrer(d)
                 elif action=='supprimer': ATELIER_VOIX.supprimer(d.get('id')); resultat=dict(ok=True)
                 elif action=='essai': resultat=ATELIER_VOIX.essai(d)
+                elif action=='lot': resultat=ATELIER_VOIX.lot(d)
                 elif action=='importer-voicestudio': resultat=ATELIER_VOIX.importer_ancien()
                 else: raise ValueError('Action vocale inconnue')
                 return self.json(resultat)
