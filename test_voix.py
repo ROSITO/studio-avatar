@@ -16,6 +16,13 @@ class VoixIntegreesTest(unittest.TestCase):
         subprocess.run(['ffmpeg','-v','error','-y','-f','lavfi','-i','sine=frequency=440:duration=3',str(ref)],check=True)
         self.profil=self.atelier.enregistrer(dict(nom='Ma voix',texte='Bonjour depuis la référence.',reference='ref.wav',langue='fr'))
     def tearDown(self):self.fixture.tearDown()
+    def test_lot_extrait_rtf_meme_si_extension_txt(self):
+        import shutil
+        if not shutil.which('textutil'):self.skipTest('macOS textutil')
+        selection=dict(synthese=dict(id='qwen3-tts-mlx',path='local',installe=True))
+        with patch.object(studio.GESTION_MODELES,'selection',return_value=selection):
+            self.atelier.lot(dict(profil=self.profil['id'],fichiers=[dict(nom='script.txt',texte=r"{\rtf1\ansi [amus\'e9e] Bonjour.}")]))
+        self.assertEqual(studio.TACHES[-1]['params']['texte'],'[amusée] Bonjour.')
     def test_lot_validation_atomique_tags_ordre_et_modele_fige(self):
         selection=dict(synthese=dict(id='qwen3-tts-mlx',path='local',installe=True))
         with patch.object(studio.GESTION_MODELES,'selection',return_value=selection):

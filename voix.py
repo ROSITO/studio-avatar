@@ -4,6 +4,8 @@ import balises
 import audio_partiel
 import json
 import os
+import re
+import subprocess
 from pathlib import Path
 import platform
 import shutil
@@ -177,6 +179,14 @@ class Atelier:
                 raise ValueError('Fichier attendu : .txt ou .md avec un nom simple.')
             if not isinstance(texte,str):raise ValueError(nom+' : contenu texte invalide.')
             texte=texte.removeprefix('\ufeff').strip()
+            if re.match(r'^\{\\rtf\d',texte):
+                if len(texte.encode('utf-8'))>65536:raise ValueError(nom+' : fichier RTF trop volumineux.')
+                outil=shutil.which('textutil')
+                if not outil:raise ValueError(nom+' : ce fichier est du RTF, pas du texte brut UTF-8.')
+                try:
+                    texte=subprocess.run([outil,'-convert','txt','-format','rtf','-stdin','-stdout','-encoding','UTF-8'],input=texte.encode('utf-8'),stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=10,check=True).stdout.decode('utf-8').strip()
+                except (subprocess.SubprocessError,UnicodeError) as exc:raise ValueError(nom+' : extraction du texte RTF impossible.') from exc
+                if re.match(r'^\{\\rtf\d',texte):raise ValueError(nom+' : format RTF non décodé.')
             if '\x00' in texte:raise ValueError(nom+' : fichier texte UTF-8 attendu.')
             try:t=self.preparer_essai(dict(profil=profil['id'],texte=texte),modeles)
             except ValueError as exc:raise ValueError(nom+' : '+str(exc)) from exc

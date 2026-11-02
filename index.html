@@ -1033,10 +1033,11 @@ async function importerLotVoix(files){
       if(!/\.(txt|md)$/i.test(file.name))throw Error(file.name+' : seuls .txt et .md sont acceptés.');
       if(file.size>65536)throw Error(file.name+' : fichier trop volumineux (64 Ko maximum).');
       let texte;try{texte=new TextDecoder('utf-8',{fatal:true}).decode(await file.arrayBuffer()).replace(/^\uFEFF/,'').trim();}catch(e){throw Error(file.name+' : enregistrez le fichier en UTF-8.');}
-      if(!texte||texte.length>5000||texte.includes('\0'))throw Error(file.name+' : entre 1 et 5 000 caractères de texte attendus.');
+      const rtf=/^\{\\rtf\d/.test(texte);
+      if(!texte||(!rtf&&texte.length>5000)||texte.includes('\0'))throw Error(file.name+' : entre 1 et 5 000 caractères de texte attendus.');
       selection.push({nom:file.name,texte});
     }
-    VOIX_LOT=selection;$('voix-lot-message').textContent=selection.length+' fichier(s) prêt(s). Vérifiez la voix puis ajoutez le lot à la file.';
+    VOIX_LOT=selection;$('voix-lot-message').textContent=selection.length+' fichier(s) prêt(s). Les fichiers RTF seront convertis en texte avant synthèse. Vérifiez la voix puis ajoutez le lot à la file.';
   }catch(e){$('voix-lot-erreur').textContent=e.message;$('voix-lot-message').textContent='';}
   finally{VOIX_LOT_CHARGE=false;$('voix-lot-fichiers').value='';dessinerLotVoix();}
 }

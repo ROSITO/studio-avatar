@@ -9,7 +9,10 @@ in the text. Markdown is passed as text; it is not rendered or stripped.
 Each file must contain 1–5,000 characters; the browser also limits source files
 to 64 KiB. Empty files, invalid UTF-8, unsupported extensions and binary NULs are
 rejected. The entire lot is validated before any tasks are queued. A UTF-8 BOM
-and surrounding whitespace are removed.
+and surrounding whitespace are removed. On macOS, RTF content disguised as a
+`.txt` file is detected and decoded through the system `textutil` converter
+before synthesis. Tags and accented characters are retained. On systems without
+that converter, such content is rejected rather than spoken as markup.
 
 The existing single worker runs the tasks sequentially and retains normal memory
 protections. Each file has an independent status, cancellation control, error,
