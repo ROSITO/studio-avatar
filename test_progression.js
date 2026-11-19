@@ -67,3 +67,6 @@ assert.equal(p.pourcent,0);assert.equal(p.total,40);assert.match(p.label,/avatar
 p=parse('Segment 2/3:  50%|████ | 20/40 [00:20<00:20, 1s/it]');assert.equal(p.pourcent,50);assert.equal(p.fait,60);assert.equal(p.total,120);
 p=parse('[Wan] Encodage du texte');assert.equal(p.pourcent,0);assert.match(p.detail,/Préparation/);
 p=parse('Animation Wan : étape 40/40\n[Wan] Décodage du mouvement');assert.equal(p.pourcent,99);assert.match(p.label,/Décodage/);
+p=parse('Wan avancement : 0.3% · segment 1/1 · étape 1/40 · couche 8/40 · passe 1/2');
+assert.equal(p.pourcent,.3);assert.equal(p.estime,true);assert.match(p.detail,/couche 8 \/ 40/);
+p=parse('Wan avancement : 99% · segment 1/1 · étape 40/40 · couche 40/40 · passe 2/2\n[Wan] Décodage du mouvement');assert.equal(p.pourcent,99);assert.match(p.label,/Décodage/);

@@ -127,12 +127,16 @@ def main():
         print('Génération de la prise',flush=True)
         lang={'fr':'French','en':'English','es':'Spanish','de':'German','it':'Italian','pt':'Portuguese','zh':'Chinese','ja':'Japanese','ko':'Korean'}.get(d['langue'],d['langue'])
         out=Path(d['sortie'])
-        flux=d['moteur']=='drama3-mlx' and limite_drama(d['texte'])>256
+        flux=d['moteur']=='drama3-mlx' and (limite_drama(d['texte'])>256 or os.environ.get('STUDIO_DRAMA_STREAM','0')=='1')
         if flux:generer_flux(modele,d,out)
         else:
+            extras=parametres_drama() if d['moteur']=='drama3-mlx' else {}
+            if d['moteur'] in ('qwen3-tts-mlx','qwen3-tts-17b-mlx'):
+                # Resserrer le sampling pour un clone plus stable (défaut modèle : 0.9 / 1.0).
+                extras=dict(temperature=0.5,top_p=0.8,top_k=20)
             generate_audio(model=modele,text=d['texte'],ref_audio=d['reference'],ref_text=d['transcription'],lang_code=lang,
                 output_path=str(out.parent),file_prefix=out.stem,audio_format='wav',join_audio=True,play=False,stream=False,max_tokens=limite_drama(d['texte']) if d['moteur']=='drama3-mlx' else 4096,verbose=True,
-                **(parametres_drama() if d['moteur']=='drama3-mlx' else {}))
+                **extras)
         if not out.is_file() or out.stat().st_size<44:raise RuntimeError('La synthèse a échoué : aucune prise produite.')
     if d['moteur']=='drama3-mlx':
         stats=lecteur_experts.stats;cache=lecteur_experts.cache

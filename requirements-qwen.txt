@@ -1,0 +1,5 @@
+# Kept separate from OmniVoice: upstream Qwen requires Transformers 4.57.3.
+qwen-tts==0.1.1
+torch==2.8.0
+torchaudio==2.8.0
+transformers==4.57.3

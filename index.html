@@ -217,10 +217,12 @@ pre { background:#080c11; }
 <!-- ================= NOUVELLE VIDÉO ================= -->
 <div class="page actif" id="p-nouvelle">
   <header class="hero"><div class="eyebrow">De l’idée à la vidéo</div><h2>Donnez un visage<br><span>à vos idées.</span></h2><p class="intro">Un avatar, votre voix, votre histoire. Créez une vidéo qui vous ressemble, en trois étapes.</p><div class="hero-foot"><span>Exécution locale</span><span>Avatars personnalisés</span><span>Sans abonnement</span></div></header>
+  <p id="plateforme-info" class="info" role="status" hidden></p>
   <div class="etapes"><div id="e1"><b>1</b>Avatar</div><div id="e2"><b>2</b>Ce qu'il dit</div><div id="e3"><b>3</b>Créer le projet</div></div>
 
   <div class="etape actif" id="etape-1">
     <p class="question">Choisissez votre avatar</p><p class="section-intro">Sélectionnez un visage dans votre bibliothèque ou importez une photo.</p>
+    <p data-import-photo class="mut" role="status" aria-live="polite" hidden></p>
     <div class="grille" id="choix-avatar"></div>
     <div class="navig"><span class="mut" id="msg-1"></span><button id="suiv-1" onclick="aller(2)" disabled>Suivant</button></div>
   </div>
@@ -263,7 +265,7 @@ pre { background:#080c11; }
 </div>
 
 <div class="page" id="p-projets"><h2>Mes projets</h2><p class="intro">Une timeline par projet. Chaque TAG possède son mini-clip ; chaque liaison se génère entre deux clips.</p><div id="liste-projets"></div><div id="moniteur-projet"></div><div id="timeline-projet"></div></div>
-<div class="page" id="p-voix"><h2>Mes voix</h2><p class="intro">Créez vos profils, préparez une prise, puis utilisez-la dans la timeline. La synthèse tourne directement dans Studio Avatar.</p><p id="voix-erreur" class="tl-error" role="alert"></p><p class="mut" id="voix-moteur-actif"></p><section class="encadre" id="voix-laboratoire"><h3>Tester une voix</h3><label for="voix-essai-profil">Voix</label><select id="voix-essai-profil" onchange="actualiserTagsEssai()"></select><label for="voix-essai-texte">Texte à prononcer</label><div id="voix-tags-essai"></div><textarea id="voix-essai-texte">Bonjour ! Cette voix est générée directement dans Studio Avatar, sur mon Mac.</textarea><p><button id="voix-generer" onclick="essayerVoix()">▶ Générer l’essai</button></p></section><section class="encadre" id="voix-lot"><h3>Générer depuis des fichiers</h3><p class="mut">Un audio par fichier, avec la même voix. Les textes et leurs tags sont conservés. Les calculs passent l’un après l’autre dans la file.</p><label for="voix-lot-profil">Voix du lot</label><select id="voix-lot-profil"></select><p><input type="file" id="voix-lot-fichiers" accept=".txt,.md,text/plain,text/markdown" multiple onchange="importerLotVoix(this.files)"></p><p class="mut">Jusqu’à 20 fichiers .txt ou .md en UTF-8, 5 000 caractères par fichier. Le contenu Markdown est lu tel quel.</p><p id="voix-lot-indisponible" class="alerte" role="status" hidden></p><p id="voix-lot-erreur" class="tl-error" role="alert"></p><div id="voix-lot-selection"></div><p><button id="voix-lot-lancer" onclick="lancerLotVoix()" disabled>Ajouter le lot à la file</button></p><p id="voix-lot-message" class="mut" aria-live="polite"></p><div id="voix-lot-suivi"></div></section><h3>Ma bibliothèque de voix</h3><div id="voix-profils" class="modeles-cartes"></div><section class="encadre"><h3>Mes essais</h3><div id="voix-prises"></div></section><details class="encadre" id="voix-formulaire"><summary id="voix-form-titre">Créer une voix à partir d’un extrait</summary><input id="voix-id" type="hidden"><label for="voix-nom">Nom</label><input id="voix-nom" placeholder="Ma voix"><label for="voix-reference">Extrait de référence (2 à 60 secondes)</label><select id="voix-reference"></select><p><button class="sec" onclick="$('voix-fichier').click()">Importer un extrait audio</button><input type="file" id="voix-fichier" accept="audio/*" hidden onchange="importerReferenceVoix(this.files[0])"></p><label for="voix-transcription">Texte exact prononcé dans l’extrait</label><textarea id="voix-transcription" placeholder="Transcrivez fidèlement l’extrait pour le clonage vocal."></textarea><label for="voix-langue">Langue</label><select id="voix-langue"><option value="fr">Français</option><option value="en">Anglais</option><option value="es">Espagnol</option><option value="de">Allemand</option><option value="it">Italien</option><option value="pt">Portugais</option></select><p><button onclick="enregistrerVoix()">Enregistrer la voix</button> <button class="sec" onclick="editerVoix()">Nouveau profil</button></p></details><details class="encadre"><summary>Récupérer mes voix de VoiceStudio</summary><p class="mut">Copie les références et leurs transcriptions depuis le serveur local VoiceStudio. Après cette migration, il peut être fermé. Les identifiants des anciens projets restent reconnus ; les nouvelles prises peuvent sonner différemment avec un autre modèle.</p><button class="sec" onclick="migrerVoix()">Importer mes profils VoiceStudio</button></details></div>
+<div class="page" id="p-voix"><h2>Mes voix</h2><p class="intro">Créez vos profils, préparez une prise, puis utilisez-la dans la timeline. La synthèse tourne directement dans Studio Avatar.</p><p id="voix-erreur" class="tl-error" role="alert"></p><p class="mut" id="voix-moteur-actif"></p><section class="encadre" id="voix-laboratoire"><h3>Tester une voix</h3><label for="voix-essai-profil">Voix</label><select id="voix-essai-profil" onchange="actualiserTagsEssai()"></select><label for="voix-essai-texte">Texte à prononcer</label><div id="voix-tags-essai"></div><textarea id="voix-essai-texte">Bonjour ! Cette voix est générée directement dans Studio Avatar, sur cet ordinateur.</textarea><p><button id="voix-generer" onclick="essayerVoix()">▶ Générer l’essai</button></p></section><section class="encadre" id="conversion-atelier"><h3>Remplacer une voix · audio ou vidéo</h3><p class="mut">Conserve les paroles et le rythme de la source. Sur une vidéo, les images restent inchangées. Chaque voix nécessite son modèle RVC entraîné.</p><label>Voix cible</label><select id="conversion-modele"></select><label>Source</label><select id="conversion-source"></select><p><input type="file" accept="audio/*,video/mp4,video/quicktime,video/webm,.m4v" onchange="importerConversion(this.files[0])"></p><details><summary>Réglage avancé</summary><label>Hauteur (demi-tons)</label><input id="conversion-pitch" type="number" min="-12" max="12" value="0"><p class="mut">0 conserve la hauteur de la source ; le timbre est remplacé.</p></details><p id="conversion-message" class="mut" role="status"></p><p id="conversion-erreur" class="tl-error" role="alert"></p><p><button id="conversion-lancer" onclick="lancerConversion()">Convertir la voix</button></p><div id="conversion-resultats"></div></section><section class="encadre" id="voix-lot"><h3>Générer depuis des fichiers</h3><p class="mut">Un audio par fichier, avec la même voix. Les textes et leurs tags sont conservés. Les calculs passent l’un après l’autre dans la file.</p><label for="voix-lot-profil">Voix du lot</label><select id="voix-lot-profil"></select><p><input type="file" id="voix-lot-fichiers" accept=".txt,.md,text/plain,text/markdown" multiple onchange="importerLotVoix(this.files)"></p><p class="mut">Jusqu’à 20 fichiers .txt ou .md en UTF-8, 5 000 caractères par fichier. Le contenu Markdown est lu tel quel.</p><p id="voix-lot-indisponible" class="alerte" role="status" hidden></p><p id="voix-lot-erreur" class="tl-error" role="alert"></p><div id="voix-lot-selection"></div><p><button id="voix-lot-lancer" onclick="lancerLotVoix()" disabled>Ajouter le lot à la file</button></p><p id="voix-lot-message" class="mut" aria-live="polite"></p><div id="voix-lot-suivi"></div></section><h3>Ma bibliothèque de voix</h3><div id="voix-profils" class="modeles-cartes"></div><section class="encadre"><h3>Mes essais</h3><div id="voix-prises"></div></section><details class="encadre" id="voix-formulaire"><summary id="voix-form-titre">Créer une voix à partir d’un extrait</summary><input id="voix-id" type="hidden"><label for="voix-nom">Nom</label><input id="voix-nom" placeholder="Ma voix"><label for="voix-reference">Extrait de référence (2 à 60 secondes)</label><select id="voix-reference"></select><p><button class="sec" onclick="$('voix-fichier').click()">Importer un extrait audio</button><input type="file" id="voix-fichier" accept="audio/*" hidden onchange="importerReferenceVoix(this.files[0])"></p><label for="voix-transcription">Texte exact prononcé dans l’extrait</label><textarea id="voix-transcription" placeholder="Transcrivez fidèlement l’extrait pour le clonage vocal."></textarea><label for="voix-langue">Langue</label><select id="voix-langue"><option value="fr">Français</option><option value="en">Anglais</option><option value="es">Espagnol</option><option value="de">Allemand</option><option value="it">Italien</option><option value="pt">Portugais</option></select><p><button onclick="enregistrerVoix()">Enregistrer la voix</button> <button class="sec" onclick="editerVoix()">Nouveau profil</button></p></details><details class="encadre"><summary>Récupérer mes voix de VoiceStudio</summary><p class="mut">Copie les références et leurs transcriptions depuis le serveur local VoiceStudio. Après cette migration, il peut être fermé. Les identifiants des anciens projets restent reconnus ; les nouvelles prises peuvent sonner différemment avec un autre modèle.</p><button class="sec" onclick="migrerVoix()">Importer mes profils VoiceStudio</button></details></div>
 
 <div class="page" id="p-modeles"><h2>Modèles</h2><p class="intro">Installez les poids compatibles et choisissez ceux utilisés pour vos prochaines générations. Les clips existants sont conservés.</p><div class="info">Les moteurs LTX et MuseTalk doivent être installés séparément. Les poids se téléchargent depuis leurs dépôts d’origine ; consultez leurs licences dans les liens Sources. Les accès restreints nécessitent HF_TOKEN et une autorisation obtenue sur Hugging Face.</div><p class="mut modele-chemin" id="modeles-emplacement"></p><p id="modeles-calcul" class="mut" aria-live="polite"></p><p id="modeles-erreur" class="tl-error" role="alert"></p><div id="modeles-transfert" aria-live="polite"></div><div id="modeles-grille"></div><section class="encadre"><h3>Importer un pack vidéo déjà installé</h3><p class="mut">Dossier local LTX-2.3 contenant la variante distilled et ses composants. Les fichiers ne seront pas copiés.</p><label for="modele-import-path">Chemin absolu du dossier</label><input id="modele-import-path" placeholder="/chemin/vers/le/modele"><label for="modele-import-nom">Nom dans le catalogue</label><input id="modele-import-nom" placeholder="Mon modèle LTX-2.3"><p><button class="sec" onclick="importerModele()">Ajouter au catalogue</button></p></section><section id="modeles-voix" class="modeles-groupe"></section></div>
 <!-- ================= MES VIDÉOS ================= -->
@@ -291,6 +293,9 @@ pre { background:#080c11; }
     <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="animation-audio" style="width:auto;flex:none" checked> Conserver ma voix et le son de la vidéo</label>
     <details style="margin-top:16px"><summary>Seed avancée</summary><label for="animation-seed">Seed fixe (facultatif)</label><input id="animation-seed" type="number" min="0" max="2147483647" placeholder="Aléatoire à chaque essai"></details>
     <p class="mut">Poids sur le disque des modèles. Calcul dans un processus isolé, budget maximal de <span id="animation-budget">12</span> Gio et réserve système de 4 Gio. Cet essai peut être long.</p>
+    <label for="animation-profil">Type d’essai</label><select id="animation-profil"><option value="apercu">Brouillon rapide · 4 étapes</option><option value="qualite">Qualité complète · calcul très long</option></select>
+    <p class="mut">Le brouillon utilise 4 étapes et 24 images/s, avec un guidage réduit. Le rendu est indicatif. Le mode complet utilise 40 étapes et 24 images/s. Calcul local expérimental : plusieurs minutes pour un aperçu, et potentiellement plusieurs heures en mode complet sur Mac.</p>
+
     <p><button id="animation-generer" onclick="genererPerformance()" disabled>Transférer ma performance</button></p>
   </section>
   <section class="encadre"><h3>Mes essais vidéo</h3><div id="animation-resultats"></div></section>
@@ -305,7 +310,8 @@ pre { background:#080c11; }
 <!-- ================= MES AVATARS ================= -->
 <div class="page" id="p-avatars">
   <h2>Mes avatars</h2>
-  <p class="intro">Ajoute une photo (assise, de face, bouche fermée, mains visibles) : le Mac lui prépare tout seul un geste par situation (neutre, curieux, enthousiaste, réfléchi, sérieux, chaleureux), leurs transitions et un clip de repos, une fois pour toutes (≈ 1 h 20). Ensuite, chaque vidéo de cet avatar est rapide.</p>
+  <p class="intro">Importez une photo assise, de face, bouche fermée et mains visibles. Elle est disponible immédiatement dans votre bibliothèque. La génération des gestes et des vidéos nécessite un moteur compatible installé : consultez la page Modèles.</p>
+  <p data-import-photo class="mut" role="status" aria-live="polite" hidden></p>
   <div class="grille" id="grille-avatars"></div>
   <div id="fiche-avatar"></div>
 </div>
@@ -317,11 +323,12 @@ pre { background:#080c11; }
   <label for="cr-prompt">Description (en anglais de préférence)</label>
   <textarea id="cr-prompt" placeholder="A woman in her thirties with short brown hair, navy sweater, seated on a light grey sofa in a bright living room"></textarea>
   <label>Références (jusqu'à 4, facultatif)</label>
+  <p data-import-photo class="mut" role="status" aria-live="polite" hidden></p>
   <div id="cr-refs" style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:8px"></div>
   <p><label class="sec petit" style="display:inline-block;cursor:pointer">＋ Ajouter une photo de référence<input type="file" accept="image/*" hidden onchange="ajouterRef(this.files[0]);this.value=''"></label>
      <select id="cr-depuis" onchange="if(this.value){CR_REFS.push({dossier:'sources',nom:this.value,role:'visage'});this.value='';dessinerCreation()}" style="max-width:260px"></select></p>
   <div class="ligne"><div style="max-width:220px"><label for="cr-nombre">Variantes</label><select id="cr-nombre"><option>1</option><option>2</option><option>3</option><option selected>4</option></select></div></div>
-  <p><button class="gros" onclick="creerPortraits()">Générer les portraits</button> <span class="mut" id="cr-msg"></span></p>
+  <p><button class="gros" id="cr-generer" onclick="creerPortraits()">Générer les portraits</button> <span class="mut" id="cr-msg"></span></p>
   <div id="cr-resultats"></div>
 </div>
 
@@ -406,15 +413,49 @@ const depot = texte => `<div class="depot" role="button" tabindex="0" aria-label
 function choisirFichier(type) { typeFichier = type; $('fichier').accept = type === 'photo' ? 'image/*' : 'audio/*'; $('fichier').click(); }
 $('fichier').onchange = e => { envoyer(e.target.files[0], typeFichier); e.target.value = ''; };
 function deposer(e) { e.preventDefault(); e.currentTarget.classList.remove('survol'); const fi = e.dataTransfer.files[0]; if (fi) envoyer(fi, fi.type.startsWith('audio') ? 'audio' : 'photo'); }
-async function envoyer(fi, type) {
-  if (!fi) return;
-  if (type === 'photo' && !fi.type.startsWith('image')) return alert("Ce fichier n'est pas une image.");
-  if (type === 'audio' && !fi.type.startsWith('audio')) return alert("Ce fichier n'est pas un audio.");
-  const r = await (await fetch(`/api/envoi?dossier=${type === 'audio' ? 'audios' : 'sources'}&nom=${encodeURIComponent(fi.name)}`, { method: 'PUT', body: fi })).json();
-  await rafraichir(true);
-  if (type === 'photo') { CH.avatar = r.nom; FICHE = r.nom; } else { $('audio').value = r.nom; majAudio(); }
-  dessiner();
+// BEGIN IMPORT PHOTO
+let IMPORT_PHOTO_EN_COURS = false;
+function messageImportPhoto(texte, erreur=false) {
+  document.querySelectorAll('[data-import-photo]').forEach(node => {
+    node.textContent = texte; node.hidden = !texte;
+    node.className = erreur ? 'tl-error' : 'mut';
+    node.setAttribute('role', erreur ? 'alert' : 'status');
+  });
 }
+function verifierPhoto(fi) {
+  if (!/\.(jpe?g|png|webp|avif|gif|bmp)$/i.test(fi.name))
+    throw Error('Format de photo non pris en charge. Utilisez une image JPG, PNG ou WebP.');
+}
+async function importerFichier(fi, dossier) {
+  const response = await fetch(`/api/envoi?dossier=${dossier}&nom=${encodeURIComponent(fi.name)}`, {method:'PUT', body:fi});
+  let resultat;
+  try { resultat = await response.json(); }
+  catch(e) { throw Error(`Le serveur n’a pas confirmé l’import (HTTP ${response.status}). Vérifiez qu’il fonctionne toujours.`); }
+  if (!response.ok || !resultat.nom) throw Error(resultat.erreur || `Import impossible (HTTP ${response.status}).`);
+  return resultat;
+}
+async function envoyer(fi, type) {
+  if (!fi || IMPORT_PHOTO_EN_COURS) return;
+  let importe = false;
+  try {
+    if (type === 'photo') verifierPhoto(fi);
+    if (type === 'audio' && !fi.type.startsWith('audio')) throw Error("Ce fichier n'est pas un audio.");
+    IMPORT_PHOTO_EN_COURS = true;
+    messageImportPhoto(`Import de ${fi.name}…`);
+    const r = await importerFichier(fi, type === 'audio' ? 'audios' : 'sources');
+    importe = true;
+    if (type === 'photo') { CH.avatar = r.nom; FICHE = r.nom; }
+    await rafraichir(true);
+    if (type === 'audio') { $('audio').value = r.nom; majAudio(); }
+    dessiner();
+    messageImportPhoto(type === 'photo' ? `Avatar ajouté : ${fi.name}.` : `Audio ajouté : ${fi.name}.`);
+  } catch(e) {
+    const message = (importe ? 'Fichier enregistré, mais la bibliothèque n’a pas pu être actualisée : ' : 'Import impossible : ') + e.message;
+    messageImportPhoto(message, true);
+    if (type === 'audio') alert(message);
+  } finally { IMPORT_PHOTO_EN_COURS = false; }
+}
+// END IMPORT PHOTO
 
 // ---------------- étape 2 ----------------
 function source(s) {
@@ -505,7 +546,7 @@ function recap() {
     <dt>Ce qu'il dit</dt><dd>${quoi}</dd>
     <dt>Voix</dt><dd>${esc(voix)}</dd>
     <dt>Durée</dt><dd>environ ${minsec(d)}</dd>
-    <dt>Estimation initiale</dt><dd>environ ${minsec(calcul)} <span class="mut">(sur ce Mac, gratuit)</span>${attente ? `<br><span style="color:var(--acc)">+ ≈ ${minsec(attente)} : la préparation de l'avatar se termine d'abord.</span>` : ''}</dd></dl>`;
+    <dt>Estimation initiale</dt><dd>environ ${minsec(calcul)} <span class="mut">(indicatif, selon le moteur et la machine)</span>${attente ? `<br><span style="color:var(--acc)">+ ≈ ${minsec(attente)} : la préparation de l'avatar se termine d'abord.</span>` : ''}</dd></dl>`;
   if (!$('nom').value) $('nom').value = tige(CH.avatar) + '-' + new Date().toISOString().slice(5, 16).replace(/\D/g, '');
 }
 async function generer() {
@@ -562,7 +603,7 @@ async function genererPerformance(){
     const seed=$('animation-seed').value;
     await api('/api/animation',{avatar:$('animation-avatar').value,video:$('animation-video').value,
       debut:+$('animation-debut').value,duree:+$('animation-duree').value,prompt:$('animation-prompt').value.trim()||'Preserve the character identity, appearance, clothing, background and lighting from the reference image. Animate the character following the movements and expressions of the driving video.',
-      conserver_audio:$('animation-audio').checked,seed:seed===''?null:+seed});
+      profil:$('animation-profil').value,int4:false,conserver_audio:$('animation-audio').checked,seed:seed===''?null:+seed});
     await rafraichir(true);
   }catch(e){$('animation-erreur').textContent=e.message;}
 }
@@ -621,8 +662,8 @@ function ficheAvatar() {
       <div class="depot" style="aspect-ratio:auto;min-height:120px" onclick="variante('repos')"><div><div class="plus">＋</div>Ajouter un repos<br><span style="font-size:12px">≈ 7 min</span></div></div></div></div>
     ${autres.length ? `<div class="situ"><h4>Autres mouvements <span class="mut" style="font-weight:400;font-size:13px">· non utilisés tant qu'ils n'ont pas de transition ou de situation</span></h4><div class="grille">${autres.map(c => carte(c.nom, true)).join('')}</div></div>` : ''}</div>`;
 }
-function variante(t) { api('/api/tache', { type: 'variante', params: { avatar: FICHE, ton: t } }).then(() => rafraichir(true)); }
-function creerMouvements(src) { api('/api/tache', { type: 'avatar', params: { source: src } }).then(() => rafraichir(true)); }
+function variante(t) { if(!verifierRole('video'))return; api('/api/tache', { type: 'variante', params: { avatar: FICHE, ton: t } }).then(() => rafraichir(true)); }
+function creerMouvements(src) { if(!verifierRole('video'))return; api('/api/tache', { type: 'avatar', params: { source: src } }).then(() => rafraichir(true)); }
 async function supprimerAvatar(src) { if (confirm(`Supprimer l'avatar ${tige(src)}, avec sa photo et ses mouvements ?`)) { await api('/api/supprimer_avatar', { nom: src }); FICHE = null; if (CH.avatar === src) CH.avatar = null; rafraichir(true); } }
 function pont(c) {
   const long = confirm(`Transition pour ${tige(c)}\n\nOK : longue (2,7 s), si le geste finit loin de la pose de départ (mains levées…).\nAnnuler : courte (1,4 s).`);
@@ -633,6 +674,7 @@ async function annuler(id) { if (confirm('Annuler cette tâche ?')) { await api(
 
 // ---------------- mode avancé ----------------
 function clip() {
+  if(!verifierRole('video'))return;
   if (!$('c-source').value || !$('c-geste').value.trim()) return alert('Choisis un avatar et décris le geste.');
   api('/api/tache', { type: 'clip', params: { source: $('c-source').value, geste: $('c-geste').value.trim(), images: +$('c-images').value, seed: $('c-seed-mode').value==='manuel' ? +$('c-seed').value : crypto.getRandomValues(new Uint32Array(1))[0] % 2147483648,
     nom: $('c-nom').value || tige($('c-source').value) + '-geste-' + $('c-seed').value, base: $('c-base').value.trim() } }).then(() => rafraichir(true));
@@ -662,7 +704,22 @@ function options(sel, liste, vide) {
   sel.innerHTML = (vide != null ? `<option value="">${vide}</option>` : '') + liste.map(([val, txt]) => `<option value="${esc(val)}">${esc(txt)}</option>`).join('');
   if ([...sel.options].some(o => o.value === v)) sel.value = v;
 }
+// BEGIN PLATFORM UI
+function roleDisponible(role) { return E.capacites?.[role]?.compatible!==false; }
+function verifierRole(role) {
+  if(roleDisponible(role))return true;
+  alert(E.capacites[role].raison);return false;
+}
+function afficherPlateforme() {
+  const host=E.plateforme, node=$('plateforme-info');
+  if(!host||!node)return;
+  node.hidden=false;
+  node.textContent=`Machine détectée : ${host.os} · ${host.arch} · ${host.ram_gib} Go RAM. `+
+    (roleDisponible('video')?'Moteur vidéo compatible avec ce système.':'Aucun moteur de génération vidéo intégré pour ce système. Les photos, voix et médias existants restent accessibles.');
+}
+// END PLATFORM UI
 function dessiner() {
+  afficherPlateforme();
   const S = E.fichiers.sources || [];
   if (CH.avatar && !S.some(s => s.nom === CH.avatar)) CH.avatar = null;
   $('sys-vs').innerHTML = `Voix intégrées : <b class="${VOIX.ok ? 'ok' : 'err'}">${VOIX.ok ? 'prête' : 'à configurer'}</b>`;
@@ -697,14 +754,25 @@ function dessiner() {
 let CR_REFS = [];
 const ROLES_REF = {visage:'Visage', tenue:'Tenue', decor:'Décor', style:'Style / lumière'};
 async function ajouterRef(fi) {
-  if (!fi || !fi.type.startsWith('image')) return alert("Ce fichier n'est pas une image.");
-  if (CR_REFS.length >= 4) return alert('4 références au maximum.');
-  const r = await (await fetch(`/api/envoi?dossier=references&nom=${encodeURIComponent(fi.name)}`, { method: 'PUT', body: fi })).json();
-  CR_REFS.push({dossier:'references', nom:r.nom, role:CR_REFS.length ? 'tenue' : 'visage'}); dessinerCreation();
+  if (!fi || IMPORT_PHOTO_EN_COURS) return;
+  try {
+    verifierPhoto(fi);
+    if (CR_REFS.length >= 4) throw Error('4 références au maximum.');
+    IMPORT_PHOTO_EN_COURS = true;
+    messageImportPhoto(`Import de ${fi.name}…`);
+    const r = await importerFichier(fi, 'references');
+    CR_REFS.push({dossier:'references', nom:r.nom, role:CR_REFS.length ? 'tenue' : 'visage'});
+    dessinerCreation();
+    messageImportPhoto(`Référence ajoutée : ${fi.name}.`);
+  } catch(e) { messageImportPhoto('Import impossible : ' + e.message, true); }
+  finally { IMPORT_PHOTO_EN_COURS = false; }
 }
+
 function dessinerCreation() {
   const sel = MODELES?.selection?.image, nom = MODELES?.catalogue?.find(m => m.id === sel?.id)?.nom;
-  $('cr-modele').innerHTML = !MODELES ? 'Chargement des modèles…' : sel?.installe ? `Modèle : <b>${esc(nom || sel.id)}</b> · à changer dans la page Modèles.${sel.id.startsWith('flux3') ? ' <b>Licence non commerciale.</b>' : ''}` : `<span class="err">Aucun modèle image installé : installez FLUX.2 Klein 4B dans la page Modèles.</span>`;
+  const compatible = sel?.compatible!==false;
+  $('cr-modele').innerHTML = !compatible ? '<span class="err">La génération de portraits intégrée nécessite macOS Apple Silicon. Vous pouvez importer une photo dans Mes avatars.</span>' : !MODELES ? 'Chargement des modèles…' : sel?.installe ? `Modèle : <b>${esc(nom || sel.id)}</b> · à changer dans la page Modèles.${sel.id.startsWith('flux3') ? ' <b>Licence non commerciale.</b>' : ''}` : `<span class="err">Aucun modèle image installé : installez FLUX.2 Klein 4B dans la page Modèles.</span>`;
+  $('cr-generer').disabled = !compatible;
   $('cr-refs').innerHTML = CR_REFS.map((r, i) => `<div style="width:120px"><img src="${f(r.dossier, r.nom)}" style="width:120px;height:150px;object-fit:cover;border-radius:8px"><select onchange="CR_REFS[${i}].role=this.value">${Object.entries(ROLES_REF).map(([k, v]) => `<option value="${k}" ${r.role === k ? 'selected' : ''}>${v}</option>`).join('')}</select><button class="sec petit" onclick="CR_REFS.splice(${i},1);dessinerCreation()">Retirer</button></div>`).join('') || '<span class="mut">Aucune référence : le portrait sera créé à partir de la description seule.</span>';
   options($('cr-depuis'), (E.fichiers.sources || []).map(x => [x.nom, 'Partir de l’avatar ' + tige(x.nom)]), 'Ou partir d’un avatar existant…');
   const presents = new Set((E.fichiers.portraits || []).map(x => x.nom));
@@ -713,6 +781,7 @@ function dessinerCreation() {
 }
 async function creerPortraits() {
   const prompt = $('cr-prompt').value.trim();
+  if (MODELES?.selection?.image?.compatible===false) return alert('La génération de portraits intégrée nécessite macOS Apple Silicon. Importez une photo dans Mes avatars.');
   if (!prompt && !CR_REFS.length) return alert('Décrivez la personne ou ajoutez une référence.');
   try { await api('/api/tache', {type:'portrait', params:{prompt, refs:CR_REFS, nombre:+$('cr-nombre').value}}); } catch(e) { return alert(e.message); }
   $('cr-msg').textContent = 'Ajouté à la file de calcul.'; await rafraichir(true);
@@ -807,6 +876,7 @@ async function enregistrerElement() {
 }
 async function genererElement(action) { if(await enregistrerElement()) await lancerProjet(action,ELEMENT); }
 async function lancerProjet(action,element) {
+  if(['automatique','manquants','clip','pont'].includes(action)&&!verifierRole('video'))return;
   if(TL_DIRTY && !await enregistrerElement()) return;
   await requeteProjet('/api/projets/lancer',{action,element});
 }
@@ -821,8 +891,13 @@ function analyserProgression(texte, etape='Préparation', tache={}) {
   // displayed as the progress of a later FFmpeg/MuseTalk command.
   const commande=texte.lastIndexOf('\n$ ');
   const log=commande>=0?texte.slice(commande+1):texte;
-  if(log.includes('lancer_animation.py')||log.includes('Animation Wan : étape')||log.includes('Index des couches :')||log.includes('[Wan]')||/Segment \d+\/\d+:/.test(log)) {
+  if(tache.type==='animation'&&/^\$ .*ffmpeg/.test(log))return {label:etape,pourcent:/Préparation/.test(etape)?0:99,portee:'du calcul'};
+  if(log.includes('lancer_animation.py')||log.includes('Animation Wan : étape')||log.includes('Index des couches :')||log.includes('[Wan]')||log.includes('Wan avancement :')||/Segment \d+\/\d+:/.test(log)) {
     if(log.includes('Encodage vidéo'))return {label:'Encodage vidéo',pourcent:99,portee:'du calcul'};
+    const granular=[...log.matchAll(/Wan avancement : ([\d.]+)% · segment (\d+)\/(\d+) · étape (\d+)\/(\d+) · couche (\d+)\/(\d+) · passe (\d+)\/(\d+)/g)].at(-1);
+    if(log.lastIndexOf('[Wan] Décodage du mouvement')>(granular?.index??Infinity))return {label:'Décodage du mouvement',pourcent:99,portee:'du calcul'};
+    if(granular)return {label:'Animation de l’avatar',pourcent:Math.min(99,+granular[1]),estime:true,
+      detail:`Segment ${granular[2]} / ${granular[3]} · étape ${granular[4]} / ${granular[5]} · couche ${granular[6]} / ${granular[7]} · passe ${granular[8]} / ${granular[9]}`};
     const wan=[...log.matchAll(/Animation Wan : étape (\d+)\/(\d+)/g)].at(-1);
     const segment=[...log.matchAll(/Segment (\d+)\/(\d+):\s*\d+%[^\r\n]*?\|\s*(\d+)\/(\d+)\s*\[([^\]]*)\]/g)].at(-1);
     const phase=[...log.matchAll(/\[Wan\] ([^\r\n]+)/g)].at(-1);
@@ -969,11 +1044,13 @@ async function chargerModeles(voix=false) {
     if(voix || !VOIX_MODELES) VOIX_MODELES=await api('/api/modeles/voix');
     const signature=JSON.stringify([data,VOIX_MODELES]); if($('p-creer').classList.contains('actif'))dessinerCreation(); if(signature===MODELES_SIGNATURE)return; MODELES_SIGNATURE=signature;
     const transfert=data.transfert||{}, actif=['analyse','telechargement','verification'].includes(transfert.statut), calcul=E.taches.some(t=>['en attente','en cours'].includes(t.etat));
-    $('modeles-emplacement').textContent='Stockage : '+data.dossier;
+    $('modeles-emplacement').textContent=(data.plateforme ? data.plateforme.os+' · '+data.plateforme.architecture+(data.plateforme.ram_gib?' · '+data.plateforme.ram_gib+' Go RAM':'')+(data.plateforme.nvidia?.length?' · '+data.plateforme.nvidia.map(g=>g.name+' ('+(g.vram_mib/1024).toFixed(1)+' Go VRAM)').join(', '):'')+' — ' : '')+'Stockage : '+data.dossier;
     $('modeles-calcul').textContent=calcul?'Une génération est en cours : les téléchargements et changements de modèle seront disponibles à sa fin. Vous pouvez consulter le catalogue et vérifier les tailles.':'';
     $('modeles-transfert').innerHTML=transfert.id && !['taille_disponible','installe'].includes(transfert.statut)?`<div class="encadre"><strong>${esc(({analyse:'Analyse du dépôt',telechargement:'Téléchargement',verification:'Vérification des fichiers',installe:'Installation terminée',interrompu:'Interrompu · reprise disponible',erreur:'Échec · reprise disponible',taille_disponible:'Taille vérifiée'})[transfert.statut] || transfert.statut)}</strong> · ${esc(transfert.id)}${transfert.total && ['telechargement','verification','interrompu'].includes(transfert.statut)?`<div class="barre"><div style="width:${Math.min(100,100*(transfert.recu||0)/transfert.total)}%"></div></div><small>${formatOctets(transfert.recu||0)} / ${formatOctets(transfert.total)}</small>`:''}<p class="mut">${esc(transfert.fichier||'')}</p>${transfert.erreur?`<p class="tl-error">${esc(transfert.erreur)}</p>`:''}${actif?'<button class="sec petit" onclick="actionModele(\'annuler\')">Annuler le transfert</button>':''}</div>`:'';
-    $('modeles-grille').innerHTML=['video','texte','lipsync','image','synthese','animation'].map(role=>`<section class="modeles-groupe"><h3>${({video:'Génération vidéo',texte:'Encodeur de texte LTX',lipsync:'Synchronisation labiale',synthese:'Synthèse vocale intégrée',animation:'Transfert de performance · expérimental',image:'Création d’avatar (FLUX)'})[role]}</h3><div class="modeles-cartes">${data.catalogue.filter(m=>m.role===role).map(m=>`<article class="modele-carte ${m.actif?'selectionne':''}"><div class="modele-entete"><strong>${esc(m.nom)}</strong><span class="etiq ${m.installe?'mvt':'prep'}">${m.actif?'Sélectionné · ':''}${m.installe?'Installé':'Non installé'}</span></div><p class="mut">${esc(m.description)}</p>${m.ram?`<p class="mut">Mémoire conseillée : ${m.ram} Go ou plus (indicatif).</p>`:''}<p><b>${formatOctets(m.octets)}</b>${role==='video'?' + encodeur Gemma partagé':''}</p><details><summary>Sources et emplacement</summary><p class="modele-chemin">${esc(m.path)}</p>${m.sources.map(repo=>`<a href="https://huggingface.co/${repo}" target="_blank" rel="noopener noreferrer">${esc(repo)}</a><br>`).join('')}</details><div class="tl-actions">${m.installe?`<button class="petit" ${m.actif||calcul?'disabled':''} onclick="actionModele('choisir','${m.id}')">${m.actif?'Utilisé pour les prochaines tâches':'Utiliser ce modèle'}</button>`:''}${!m.local?`<button class="sec petit" ${actif?'disabled':''} onclick="actionModele('analyser','${m.id}')">Vérifier la taille</button>${m.octets!=null?`<button class="${m.installe?'sec ':''}petit" ${actif||calcul?'disabled':''} onclick="actionModele('telecharger','${m.id}')">${m.installe?'Vérifier / réparer':'Télécharger / reprendre'}</button>`:''}`:''}</div></article>`).join('')}</div></section>`).join('');
-    $('modeles-voix').innerHTML='<h3>Voix intégrées</h3><p class="mut">Les modèles vocaux ci-dessus tournent directement dans Studio Avatar. Gérez les références et les prises dans Mes voix. Installez le runtime avec python3 installer_voix.py (MLX), ou python3.12 installer_voix.py --moteur omnivoice.</p>';
+    $('modeles-grille').innerHTML=['video','texte','lipsync','image','synthese','animation'].filter(role=>data.catalogue.some(m=>m.role===role && m.compatible!==false)).map(role=>`<section class="modeles-groupe"><h3>${({video:'Génération vidéo',texte:'Encodeur de texte LTX',lipsync:'Synchronisation labiale',synthese:'Synthèse vocale intégrée',animation:'Transfert de performance · expérimental',image:'Création d’avatar (FLUX)'})[role]}</h3><div class="modeles-cartes">${data.catalogue.filter(m=>m.role===role && m.compatible!==false).map(m=>`<article class="modele-carte ${m.actif?'selectionne':''}"><div class="modele-entete"><strong>${esc(m.nom)}</strong><span class="etiq ${m.installe?'mvt':'prep'}">${m.actif?'Sélectionné · ':''}${m.installe?'Installé':'Non installé'}</span></div><p class="mut">${esc(m.description)}</p>${m.backend?`<p class="mut">Moteur : ${esc(m.backend)}${m.appareil?' · '+esc(m.appareil):''}</p>`:''}${m.ram?`<p class="mut">Mémoire conseillée : ${m.ram} Go ou plus (indicatif).</p>`:''}<p><b>${formatOctets(m.octets)}</b>${role==='video'?' + encodeur Gemma partagé':''}</p><details><summary>Sources et emplacement</summary><p class="modele-chemin">${esc(m.path)}</p>${m.sources.map(repo=>`<a href="https://huggingface.co/${repo}" target="_blank" rel="noopener noreferrer">${esc(repo)}</a><br>`).join('')}</details><div class="tl-actions">${m.installe?`<button class="petit" ${m.actif||calcul?'disabled':''} onclick="actionModele('choisir','${m.id}')">${m.actif?'Utilisé pour les prochaines tâches':'Utiliser ce modèle'}</button>`:''}${!m.local?`<button class="sec petit" ${actif?'disabled':''} onclick="actionModele('analyser','${m.id}')">Vérifier la taille</button>${m.octets!=null?`<button class="${m.installe?'sec ':''}petit" ${actif||calcul?'disabled':''} onclick="actionModele('telecharger','${m.id}')">${m.installe?'Vérifier / réparer':'Télécharger / reprendre'}</button>`:''}`:''}</div></article>`).join('')}</div></section>`).join('');
+    const indisponibles=data.catalogue.filter(m=>m.compatible===false);
+    if(indisponibles.length) $('modeles-grille').innerHTML+=`<section class="encadre"><p class="alerte">${data.capacites?.video?.compatible===false?'Aucun moteur de génération vidéo intégré pour ce système. Les variantes vocales PyTorch compatibles sont proposées ci-dessus.':'Ces variantes ne sont pas proposées pour cette architecture. Utilisez les modèles compatibles ci-dessus.'}</p><details><summary>Modèles indisponibles sur cette machine (${indisponibles.length})</summary>${indisponibles.map(m=>`<p><b>${esc(m.nom)}</b><br>${esc(m.raison_incompatibilite)}</p>`).join('')}</details></section>`;
+    $('modeles-voix').innerHTML='<h3>Voix intégrées</h3><p class="mut">Téléchargez les poids du moteur compatible ci-dessus, puis gérez les références et les prises dans Mes voix. Sous Windows, installer.bat prépare Qwen-TTS PyTorch et OmniVoice dans deux environnements séparés.</p>';
   }catch(e){$('modeles-erreur').textContent=e.message;}
 }
 async function actionModele(action,id) {
@@ -997,9 +1074,40 @@ function dessinerVoix() {
   options($('voix-reference'),(E.fichiers.references||[]).filter(x=>/\.(wav|mp3|m4a|flac|ogg)$/i.test(x.nom)).map(x=>[x.nom,x.nom]));
   options($('voix-lot-profil'),profilsCompatibles().map(v=>[v.id,v.nom]));
   dessinerLotVoix();
+  chargerConversion();
   actualiserTagsEssai();
   $('voix-generer').disabled=busy||!VOIX.ok||!profilsCompatibles().length;
   $('voix-prises').innerHTML=E.taches.filter(t=>t.type==='voix'&&(!t.params?.lot||t.partiel?.fichier)).map(t=>`<article class="encadre"><strong>${esc(t.etat)} · ${esc(t.params.nom_fichier||'prise vocale')} · ${esc(t.modeles?.synthese?.id||'moteur non renseigné')}</strong><p>${esc(t.params.texte)}</p>${t.resultat?.fichier?`<audio controls preload="none" style="width:100%" src="${f('audios',t.resultat.fichier)}"></audio><p><a href="${f('audios',t.resultat.fichier)}" download="${esc(nomAudioLot(t))}">Télécharger cette prise</a> · Disponible dans « J’ai déjà l’audio ».</p>`:`<p class="mut">${esc(t.erreur||t.etape||'En attente dans la file de calcul')}</p>${t.partiel?.fichier?`<p class="alerte">Prise incomplète sauvegardée : le texte n’a pas été entièrement généré.</p><audio controls preload="none" style="width:100%" src="${f('audios',t.partiel.fichier)}"></audio><p><a href="${f('audios',t.partiel.fichier)}" download>Télécharger l’audio partiel</a></p>`:''}${['en cours','en attente'].includes(t.etat)?`<button class="sec petit" onclick="annuler('${t.id}')">Annuler</button>`:''}`}</article>`).join('');
+}
+async function chargerConversion(){
+  try{
+    const c=await api('/api/conversion');
+    options($('conversion-modele'),c.modeles.filter(m=>m.disponible).map(m=>[m.id,m.nom]));
+    options($('conversion-source'),['audios','performances','videos'].flatMap(d=>(E.fichiers[d]||[]).filter(x=>/\.(wav|mp3|m4a|flac|ogg|mp4|mov|m4v|webm)$/i.test(x.nom)).map(x=>[d+'/'+x.nom,x.nom])));
+    $('conversion-lancer').disabled=!c.modeles.some(m=>m.disponible)||!$('conversion-source').value;
+    $('conversion-message').textContent=c.modeles.some(m=>m.disponible)?'Conversion locale RVC · calcul ajouté à la file.':'Modèle indisponible : vérifiez le disque des poids et la configuration RVC.';
+    $('conversion-resultats').innerHTML=E.taches.filter(t=>t.type==='conversion').map(t=>`<article class="encadre"><strong>${esc(t.params.nom_voix)} · ${esc(t.etat)}</strong><p>${esc(t.params.source)}</p>${t.resultat?`${t.resultat.video?`<video controls playsinline style="width:100%;max-height:400px" src="${f('videos',t.resultat.video)}"></video><p><a download href="${f('videos',t.resultat.video)}">Télécharger la vidéo</a></p>`:''}<audio controls style="width:100%" src="${f('audios',t.resultat.audio)}"></audio><p><a download href="${f('audios',t.resultat.audio)}">Télécharger l’audio</a> · Disponible dans « J’ai déjà l’audio ».</p>`:`<p class="mut">${esc(t.erreur||t.etape||'En attente')}</p>${['en attente','en cours'].includes(t.etat)?`<button class="sec" onclick="annuler('${t.id}')">Annuler</button>`:''}`}</article>`).join('');
+  }catch(e){$('conversion-erreur').textContent=e.message;}
+}
+async function importerConversion(file){
+  if(!file)return;
+  try{
+    if(file.size>1024**3)throw Error('Import limité à 1 Go.');
+    if(!/\.(wav|mp3|m4a|flac|ogg|mp4|mov|m4v|webm)$/i.test(file.name))throw Error('Format audio ou vidéo non pris en charge.');
+    $('conversion-message').textContent='Import en cours…';
+    const dossier=/\.(mp4|mov|m4v|webm)$/i.test(file.name)?'performances':'audios';
+    const r=await fetch('/api/envoi?dossier='+dossier+'&nom='+encodeURIComponent(crypto.randomUUID().slice(0,8)+'-'+file.name),{method:'PUT',body:file});
+    const x=await r.json();if(!r.ok)throw Error(x.erreur||'Import impossible');
+    await rafraichir(true);await chargerConversion();$('conversion-source').value=dossier+'/'+x.nom;
+  }catch(e){$('conversion-erreur').textContent=e.message;}
+}
+async function lancerConversion(){
+  $('conversion-erreur').textContent='';$('conversion-lancer').disabled=true;
+  try{
+    const [dossier,...nom]=$('conversion-source').value.split('/');
+    await api('/api/conversion',{dossier,source:nom.join('/'),modele:$('conversion-modele').value,pitch:Number($('conversion-pitch').value)});
+    await rafraichir(true);await chargerConversion();
+  }catch(e){$('conversion-erreur').textContent=e.message;$('conversion-lancer').disabled=false;}
 }
 // BEGIN VOIX LOT
 function nomAudioLot(t){return (t.params?.nom_fichier||t.resultat?.fichier||'prise.wav').replace(/\.(txt|md)$/i,'.wav');}

@@ -14,6 +14,8 @@ class Response(io.BytesIO):
 
 class ModelesTest(unittest.TestCase):
     def setUp(self):
+        for name, value in [('system', 'Darwin'), ('machine', 'arm64')]:
+            mocked=patch.object(modeles.platform,name,return_value=value);mocked.start();self.addCleanup(mocked.stop)
         self.tmp=tempfile.TemporaryDirectory();self.root=Path(self.tmp.name)
         self.s=SimpleNamespace(ICI=self.root,MODELES=self.root/'weights',TACHES=[],VOICESTUDIO='http://127.0.0.1:3900',LTX='missing-ltx')
         self.m=modeles.Gestionnaire(self.s)
@@ -76,5 +78,42 @@ class ModelesTest(unittest.TestCase):
         (p/'config.json').write_text('{"model_version":"2.3.0"}')
         self.m.importer(str(p),'Existing');e=self.m.config['locaux'][0]
         self.assertEqual(self.m.path(e),p.resolve());self.assertEqual(len(self.m.config['locaux']),1)
+
+    def test_windows_offers_native_torch_models_and_defaults_to_omnivoice(self):
+        with patch.object(modeles.platform,'system',return_value='Windows'), patch.object(modeles.platform,'machine',return_value='AMD64'):
+            manager=modeles.Gestionnaire(self.s)
+            data=manager.catalogue()
+            self.assertEqual(data['selection']['synthese']['id'],'omnivoice')
+            self.assertEqual({e['id'] for e in data['catalogue'] if e['compatible']},{'omnivoice','qwen3-tts-torch','qwen3-tts-17b-torch'})
+            self.assertFalse(data['selection']['video']['compatible'])
+            self.assertEqual(data['plateforme']['os'],'Windows')
+            self.assertTrue(data['capacites']['synthese']['compatible'])
+            self.assertFalse(data['capacites']['video']['compatible'])
+            qwen=next(e for e in data['catalogue'] if e['id']=='qwen3-tts-torch')
+            self.assertEqual(qwen['backend'],'qwen-torch')
+            self.assertEqual(qwen['sources'],['Qwen/Qwen3-TTS-12Hz-0.6B-Base'])
+            for mid in ('ltx23-q4','gemma3','qwen3-tts-mlx','drama3-mlx','wan-animate2','flux2-klein4b','musetalk15'):
+                with self.assertRaisesRegex(ValueError,'Apple Silicon'):manager.commencer(mid)
+                with self.assertRaisesRegex(ValueError,'Apple Silicon'):manager.choisir(mid)
+            self.assertIsNone(manager.thread)
+
+    def test_windows_migrates_old_mac_voice_selection_without_deleting_weights(self):
+        modeles.atomique(self.m.config_path,dict(selection=dict(video='ltx23-q4',synthese='drama3-mlx'),locaux=[]))
+        entry=self.m.entry('ltx23-q4');folder=self.m.target(entry);folder.mkdir(parents=True)
+        for name in entry['required']:(folder/name).write_bytes(b'fixture')
+        with patch.object(modeles.platform,'system',return_value='Windows'), patch.object(modeles.platform,'machine',return_value='AMD64'):
+            manager=modeles.Gestionnaire(self.s)
+            self.assertEqual(manager.selection()['synthese']['id'],'omnivoice')
+            self.assertEqual(json.loads(manager.config_path.read_text())['selection']['synthese'],'omnivoice')
+            self.assertFalse(manager.selection()['video']['installe'])
+            self.assertTrue(manager.valid(entry,folder))
+
+    def test_apple_silicon_keeps_its_catalogue_and_default(self):
+        data=self.m.catalogue()
+        self.assertTrue(all(e['compatible'] for e in data['catalogue'] if e['backend']!='qwen-torch'))
+        self.assertTrue(all(not e['compatible'] for e in data['catalogue'] if e['backend']=='qwen-torch'))
+        self.assertEqual(data['selection']['synthese']['id'],'qwen3-tts-mlx')
+        with patch.object(modeles.platform,'system',return_value='Linux'), patch.object(modeles.platform,'machine',return_value='aarch64'):
+            self.assertFalse(modeles.compatibilite(self.m.entry('omnivoice'))['compatible'])
 
 if __name__=='__main__':unittest.main()

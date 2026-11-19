@@ -5,6 +5,8 @@ import fnmatch
 import hashlib
 import json
 import os
+import platform
+import plateforme
 from pathlib import Path, PurePosixPath
 import shutil
 import threading
@@ -25,6 +27,9 @@ CATALOGUE += [dict(id=mid,nom=nom,role='synthese',ram=ram,description=descriptio
       ('qwen3-tts-mlx','Qwen3-TTS 0.6B · MLX 4 bits','mlx-community/Qwen3-TTS-12Hz-0.6B-Base-4bit',8,
        'Clonage vocal local multilingue · moteur léger Apple Silicon · Apache 2.0.',
        ['config.json','model.safetensors','speech_tokenizer/model.safetensors','vocab.json','merges.txt']),
+      ('qwen3-tts-17b-mlx','Qwen3-TTS 1.7B · MLX 8 bits','mlx-community/Qwen3-TTS-12Hz-1.7B-Base-8bit',12,
+       'Clonage vocal local plus fidèle · Apple Silicon · Apache 2.0 · mémoire plus élevée.',
+       ['config.json','model.safetensors','speech_tokenizer/model.safetensors','vocab.json','merges.txt']),
       ('drama3-mlx','Fish Audio Drama 3 · MLX 4 bits','mlx-community/fish-audio-drama-3-4bit',32,
        'Port communautaire Apple Silicon · environ 24 Go de poids, mémoire élevée · licence Fish Audio Community. À tester avant les vidéos longues.',
        ['config.json','codec.safetensors','tokenizer.json']+['model-%05d.safetensors'%i for i in range(1,7)])]]
@@ -44,6 +49,34 @@ CATALOGUE += [dict(id='wan-animate2', nom='Wan-Animate-2 · transfert de perform
              ['text_encoder/model-%05d-of-00003.safetensors'%i for i in range(1,4)],
     sources=[dict(repo='Wan-AI/Wan2.2-Animate-2-14B-Diffusers',
                   include=['*.json','*.safetensors','*.model','*.txt','LICENSE*','NOTICE*'], prefix='')])]
+
+# Native PyTorch checkpoints, kept separate from MLX weight conversions.
+CATALOGUE += [dict(id=mid, nom=nom, role='synthese', ram=ram, backend='qwen-torch',
+    description='Clonage Qwen-TTS officiel PyTorch · Windows/Linux x64 · CPU ou NVIDIA · Apache 2.0.',
+    required=['config.json','model.safetensors','tokenizer_config.json','vocab.json','merges.txt',
+              'speech_tokenizer/config.json','speech_tokenizer/model.safetensors',
+              'speech_tokenizer/preprocessor_config.json'],
+    sources=[dict(repo=repo, include=['*.json','*.safetensors','*.txt','LICENSE*'],prefix='')])
+    for mid,nom,repo,ram in [
+        ('qwen3-tts-torch','Qwen3-TTS 0.6B · PyTorch','Qwen/Qwen3-TTS-12Hz-0.6B-Base',8),
+        ('qwen3-tts-17b-torch','Qwen3-TTS 1.7B · PyTorch','Qwen/Qwen3-TTS-12Hz-1.7B-Base',16)]]
+
+
+def backend(e):
+    if e.get('backend'):return e['backend']
+    if e['id']=='omnivoice':return 'omnivoice-torch'
+    return {'video':'ltx-mlx','texte':'ltx-mlx','synthese':'mlx-audio',
+            'image':'mflux','animation':'wan-mps','lipsync':'musetalk-mps'}[e['role']]
+
+
+def compatibilite(e):
+    host=plateforme.detecter(); moteur=backend(e)
+    compatible=plateforme.backend_compatible(moteur,host)
+    raison='' if compatible else ('Le moteur Qwen PyTorch intégré est prévu pour Windows/Linux x64.' if moteur=='qwen-torch' else
+        'Le moteur intégré pour ce modèle nécessite macOS Apple Silicon ; aucun moteur compatible n’est fourni pour cette machine.')
+    return dict(compatible=compatible,raison_incompatibilite=raison,backend=moteur,
+                appareil=plateforme.appareil_torch(host) if moteur in ('qwen-torch','omnivoice-torch') else 'mps' if compatible else None)
+
 
 class SansFuiteToken(urllib.request.HTTPRedirectHandler):
     def redirect_request(self,req,fp,code,msg,headers,newurl):
@@ -86,7 +119,11 @@ class Gestionnaire:
         self.config_path=studio.ICI/'modeles.json'; self.etat_path=studio.ICI/'.modeles-etat.json'
         self.config=lire_json(self.config_path,dict(selection={'video':'ltx23-q4','texte':'gemma3','lipsync':'musetalk15'},locaux=[]))
         self.config['selection'].setdefault('image','flux2-klein4b')
-        self.config['selection'].setdefault('synthese','qwen3-tts-mlx')
+        default_voice = 'qwen3-tts-mlx' if platform.system() == 'Darwin' and platform.machine().lower() == 'arm64' else 'omnivoice'
+        self.config['selection'].setdefault('synthese', default_voice)
+        if not compatibilite(self.entry(self.config['selection']['synthese']))['compatible']:
+            self.config['selection']['synthese'] = default_voice
+            if self.config_path.exists(): atomique(self.config_path, self.config)
         self.etat=lire_json(self.etat_path,{})
         if self.etat.get('statut') in ('analyse','telechargement','verification'): self.etat['statut']='interrompu'
         self.plans=lire_json(studio.ICI/'.modeles-plans.json',{})
@@ -124,27 +161,43 @@ class Gestionnaire:
             out={}
             for role,mid in self.config['selection'].items():
                 e=self.entry(mid); p=self.path(e)
-                out[role]=dict(id=mid,path=str(p),installe=self.valid(e,p))
+                out[role]=dict(id=mid,path=str(p),installe=self.valid(e,p) and compatibilite(e)['compatible'],**compatibilite(e))
             return out
     def catalogue(self):
         with self.lock:
             entries=[]
             for e in self.entries():
                 p=self.path(e); plan=self.plans.get(e['id'])
-                entries.append(dict(id=e['id'],nom=e['nom'],role=e['role'],ram=e['ram'],description=e['description'],path=str(p),installe=self.valid(e,p),actif=self.config['selection'].get(e['role'])==e['id'],octets=plan.get('total') if plan else None,sources=[s['repo'] for s in e.get('sources',[])],local=bool(e.get('path'))))
-            return dict(catalogue=entries,selection=self.selection(),transfert=self.etat,voix_url=self.s.VOICESTUDIO,moteurs=dict(ltx=bool(shutil.which(str(self.s.LTX))),musetalk=self.muse_root.is_dir(),mflux=bool(getattr(self.s,'MFLUX',None) and (self.s.MFLUX/'mflux-generate-flux2').is_file())),dossier=str(self.s.MODELES))
+                entries.append(dict(id=e['id'],nom=e['nom'],role=e['role'],ram=e['ram'],description=e['description'],path=str(p),installe=self.valid(e,p),actif=self.config['selection'].get(e['role'])==e['id'],octets=plan.get('total') if plan else None,sources=[s['repo'] for s in e.get('sources',[])],local=bool(e.get('path')),**compatibilite(e)))
+            return dict(plateforme={**plateforme.detecter(),'architecture':platform.machine()},catalogue=entries,selection=self.selection(),capacites=self.capacites(),transfert=self.etat,voix_url=self.s.VOICESTUDIO,moteurs=dict(ltx=bool(shutil.which(str(self.s.LTX))),musetalk=self.muse_root.is_dir(),mflux=bool(getattr(self.s,'MFLUX',None) and (self.s.MFLUX/'mflux-generate-flux2').is_file())),dossier=str(self.s.MODELES))
+    def capacites(self):
+        result={}
+        for role in ('video','image','synthese','animation','lipsync'):
+            entries=[e for e in self.entries() if e['role']==role]
+            possibles=[e['id'] for e in entries if compatibilite(e)['compatible']]
+            result[role]=dict(compatible=bool(possibles),modeles=possibles,
+                raison='' if possibles else compatibilite(entries[0])['raison_incompatibilite'])
+        return result
+    def verifier_role(self,role):
+        capacite=self.capacites()[role]
+        if not capacite['compatible']:raise ValueError(capacite['raison'])
     def voix_catalogue(self):
         return self.s.ATELIER_VOIX.catalogue()
     def choisir_voix(self,mid):
         self.choisir(mid)
+    def verifier_compatibilite(self,e):
+        statut=compatibilite(e)
+        if not statut['compatible']:raise ValueError(statut['raison_incompatibilite'])
     def choisir(self,mid):
         with self.lock:
             if any(t['etat'] in ('en attente','en cours') for t in self.s.TACHES):raise ValueError('Terminez ou annulez les tâches avant de changer de modèle.')
             e=self.entry(mid)
+            self.verifier_compatibilite(e)
             if not self.valid(e,self.path(e)):raise ValueError('Installez ou importez ce modèle avant de l’activer.')
             self.config['selection'][e['role']]=mid;atomique(self.config_path,self.config)
     def importer(self,path,nom):
         with self.lock:
+            self.verifier_compatibilite(dict(id='local',role='video'))
             p=Path(path).expanduser().resolve(); e=dict(id='local-'+hashlib.sha256(str(p).encode()).hexdigest()[:12],nom=nom or p.name,role='video',ram=0,description='Pack LTX-2.3 local importé ; aucune copie des poids.',required=VIDEO_FILES,path=str(p),sources=[])
             if not self.valid(e,p):raise ValueError('Pack incomplet : fichiers LTX distilled requis absents.')
             config=lire_json(p/'config.json',{})
@@ -169,6 +222,7 @@ class Gestionnaire:
     def commencer(self,mid,installer=False):
         with self.lock:
             e=self.entry(mid)
+            self.verifier_compatibilite(e)
             if not e.get('sources'):raise ValueError('Ce modèle local ne dispose pas de source de téléchargement.')
             if self.thread and self.thread.is_alive():raise ValueError('Un transfert est déjà en cours.')
             if installer and mid not in self.plans:raise ValueError('Vérifiez d’abord la taille du téléchargement.')

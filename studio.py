@@ -178,6 +178,7 @@ def faire(t):
     if 'modeles' not in t: t['modeles'] = GESTION_MODELES.selection()
     if t['type'].startswith('projet_'):
         projets.executer(t); return
+    if t['type'] == 'conversion': ATELIER_CONVERSION.executer(t); return
     if t['type'] == 'animation': ATELIER_ANIMATION.executer(t); return
     if t['type'] in ('voix','voix_mesure'): ATELIER_VOIX.executer(t); return
     if t['type'] == 'portrait': portrait(t); return
@@ -437,7 +438,7 @@ def fichiers():
     for d in DOSSIERS:
         l = []
         for f in sorted((ICI / d).iterdir(), key=lambda f: -f.stat().st_mtime):
-            if not f.is_file() or f.name.startswith(('.', 'fin-')) or f.suffix in ('.json', '.jpg') or '.tmp.' in f.name or f.name.endswith('-16k.wav') or '-25fps' in f.name: continue
+            if not f.is_file() or f.name.startswith(('.', 'fin-')) or (f.suffix.lower() == '.json' or (f.suffix.lower() == '.jpg' and d not in ('sources', 'portraits', 'references'))) or '.tmp.' in f.name or f.name.endswith('-16k.wav') or '-25fps' in f.name: continue
             m = f.with_suffix('.json'); l.append(dict(nom=f.name, meta=json.loads(m.read_text()) if m.exists() else {},
                                                   apercu=f.with_suffix('.jpg').exists(), duree=round(duree_cache(f), 2) if f.suffix in ('.mp4', '.mov', '.m4v', '.webm', '.wav', '.mp3', '.m4a') else None))
         out[d] = l
@@ -454,25 +455,32 @@ class H(BaseHTTPRequestHandler):
         if u.path == '/': return self.envoyer(ICI / 'index.html', 'text/html; charset=utf-8')
         if u.path == '/api/etat':
             libs = {s.name: lib_avatar(s.name) for s in (ICI / 'sources').iterdir() if not s.name.startswith('.')}
-            return self.json(dict(taches=TACHES[-60:][::-1], fichiers=fichiers(), t7=GESTION_MODELES.selection()['video']['installe'], base_clip=BASE_CLIP,
+            return self.json(dict(plateforme=modeles.plateforme.detecter(),capacites=GESTION_MODELES.capacites(),taches=TACHES[-60:][::-1], fichiers=fichiers(), t7=GESTION_MODELES.selection()['video']['installe'], base_clip=BASE_CLIP,
                                   tons=[dict(cle=k, nom=n, emoji=e, balise=bs[0], geste=GESTES[gs[0]]) for k, n, e, bs, gs in TONS], balises=BALISES, balises_vocales=balises.VOCALES, libs=libs))
         if u.path == '/api/apercu': return self.json(apercus.etat(parse_qs(u.query).get('projet', [''])[0]))
         if u.path == '/api/modeles/voix': return self.json(GESTION_MODELES.voix_catalogue())
         if u.path == '/api/modeles': return self.json(GESTION_MODELES.catalogue())
         if u.path == '/api/projets': return self.json(projets.liste())
         if u.path == '/api/animation': return self.json(ATELIER_ANIMATION.etat())
+        if u.path == '/api/conversion': return self.json(ATELIER_CONVERSION.etat())
         if u.path == '/api/voix': return self.json(ATELIER_VOIX.liste())
+        if re.fullmatch(r'/api/taches/[a-f0-9]{8,12}',u.path):
+            t=next((t for t in TACHES if t['id']==u.path.rsplit('/',1)[1]),None)
+            return self.json(t if t else dict(erreur='Tâche introuvable.'),200 if t else 404)
         if u.path.startswith('/api/journal/'):
             f = ICI / 'taches' / f"{nom_sur(u.path.rsplit('/', 1)[1])}.log"
             txt = f.read_text(errors='replace')[-4000:] if f.exists() else ''
             return self.json(dict(texte=re.sub(r'.*\r', '', txt)))
         if u.path.startswith('/f/'):
             d, _, n = unquote(u.path[3:]).partition('/')
-            if d in DOSSIERS and '/' not in n and n: return self.envoyer(ICI / d / n)
+            if d in DOSSIERS and n and '/' not in n and '\\' not in n and n not in ('.', '..'):
+                folder = (ICI / d).resolve()
+                target = (folder / n).resolve()
+                if target.parent == folder and target.is_file(): return self.envoyer(target)
         self.send_error(404)
     def envoyer(self, f, ctype=None):
         if not f.exists(): return self.send_error(404)
-        ctype = ctype or {'.mp4': 'video/mp4', '.jpg': 'image/jpeg', '.png': 'image/png', '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.json': 'application/json'}.get(f.suffix.lower(), 'application/octet-stream')
+        ctype = ctype or {'.mp4': 'video/mp4', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.avif': 'image/avif', '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.json': 'application/json'}.get(f.suffix.lower(), 'application/octet-stream')
         taille = f.stat().st_size; debut, fin = 0, taille - 1
         r = re.match(r'bytes=(\d*)-(\d*)', self.headers.get('Range', ''))   # lecture vidéo avec avance/retour
         if r and (r[1] or r[2]):
@@ -498,11 +506,25 @@ class H(BaseHTTPRequestHandler):
                 if not 0<size<=1024**3 or Path(name).suffix.lower() not in ('.mp4','.mov','.m4v','.webm'):
                     self.close_connection=True
                     return self.json(dict(erreur='Vidéo MP4, MOV ou WebM de 1 Go maximum requise.'),400)
-            n = nom_sur(q['nom'][0]); (ICI / q['dossier'][0] / n).write_bytes(self.corps())
+            if not q.get('nom', [''])[0]:
+                return self.json(dict(erreur='Nom de fichier requis.'),400)
+            n = nom_sur(q['nom'][0])
+            try:
+                (ICI / q['dossier'][0] / n).write_bytes(self.corps())
+            except (OSError, ValueError):
+                return self.json(dict(erreur="Impossible d’enregistrer le fichier. Vérifiez les droits d’écriture et l’espace disque du dossier Studio Avatar."),500)
             return self.json(dict(nom=n))
         self.send_error(400)
     def do_POST(self):
-        u = urlparse(self.path); d = json.loads(self.corps() or b'{}')
+        u = urlparse(self.path)
+        try:
+            d=json.loads(self.corps() or b'{}')
+            if not isinstance(d,dict):raise ValueError('Objet JSON attendu.')
+        except (ValueError,UnicodeError) as exc:
+            return self.json(dict(erreur='Requête JSON invalide.',erreur_detail=dict(code='json_invalide',champ='requete',message=str(exc),relancable=False,suggestion='Envoyer un objet JSON UTF-8 valide.')),400)
+        if u.path == '/api/conversion':
+            try: return self.json(ATELIER_CONVERSION.demander(d))
+            except (ValueError, OSError, KeyError) as e: return self.json(dict(erreur=str(e)),400)
         if u.path in ('/api/animation','/api/animation/diagnostic'):
             try: return self.json(ATELIER_ANIMATION.demander(d,diagnostic=u.path.endswith('/diagnostic')))
             except (ValueError, OSError, KeyError) as e: return self.json(dict(erreur=str(e)),400)
@@ -516,6 +538,8 @@ class H(BaseHTTPRequestHandler):
                 elif action=='importer-voicestudio': resultat=ATELIER_VOIX.importer_ancien()
                 else: raise ValueError('Action vocale inconnue')
                 return self.json(resultat)
+            except voix_locale.ErreurValidation as e:
+                return self.json(dict(erreur=str(e),erreur_detail=e.detail),422)
             except (ValueError, OSError, KeyError) as e: return self.json(dict(erreur=str(e)),400)
         if u.path == '/api/apercu':
             try: return self.json(apercus.demander(d.get('projet'), d.get('jonction')))
@@ -542,6 +566,9 @@ class H(BaseHTTPRequestHandler):
             except (ValueError, KeyError, TypeError) as e: return self.json(dict(erreur=str(e)), 400)
         if u.path == '/api/tache':
             if d.get('type') not in ('clip', 'pont', 'sequence', 'lipsync', 'video', 'avatar', 'variante', 'portrait'): return self.json(dict(erreur='type inconnu'), 400)
+            try:
+                if d['type']!='sequence':GESTION_MODELES.verifier_role('image' if d['type']=='portrait' else 'lipsync' if d['type']=='lipsync' else 'video')
+            except ValueError as exc:return self.json(dict(erreur=str(exc)),400)
             if d['type'] == 'avatar': nouvelles = preparation(d['params']['source'])
             else: nouvelles = [d]
             with VERROU:
@@ -575,10 +602,12 @@ import modeles
 import apercus
 import voix as voix_locale
 import animation
+import conversion
 apercus.installer(sys.modules[__name__])
 GESTION_MODELES = modeles.Gestionnaire(sys.modules[__name__])
 projets.installer(sys.modules[__name__])
 ATELIER_VOIX = voix_locale.Atelier(sys.modules[__name__])
+ATELIER_CONVERSION = conversion.Atelier(sys.modules[__name__])
 ATELIER_ANIMATION = animation.Atelier(sys.modules[__name__])
 
 if __name__ == '__main__':

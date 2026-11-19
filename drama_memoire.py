@@ -76,6 +76,9 @@ def activer(mx,modele,dossier,lecteur=None):
         SwitchGLU.__call__=bloc
         print(f'Experts GPU : préparation chevauchée, synchronisation bornée à {len(blocs)} blocs',flush=True)
     from mlx_audio.tts.models.fish_drama3 import drama3
-    drama3.PREFILL_CHUNK=64
+    chunk=int(os.environ.get('STUDIO_DRAMA_PREFILL_CHUNK','64'))
+    if not 1<=chunk<=64:raise ValueError('Préparation Drama : entre 1 et 64 trames.')
+    drama3.PREFILL_CHUNK=chunk
+    print(f'Préparation Drama : blocs de {chunk} trames',flush=True)
     mx.set_default_device(mx.gpu)
     mx.set_wired_limit(0)

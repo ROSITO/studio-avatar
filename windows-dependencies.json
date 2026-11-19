@@ -1,0 +1,24 @@
+{
+  "python": {
+    "version": "3.13.17",
+    "url": "https://www.python.org/ftp/python/3.13.17/python-3.13.17-amd64.exe",
+    "sha256": "5DA012101BA2E17113A9A1CD901E9CE1441086F2B7ECB5DE06EC94163899A190",
+    "file": "python-3.13.17-amd64.exe",
+    "manifest": "https://github.com/microsoft/winget-pkgs/blob/master/manifests/p/Python/Python/3/13/3.13.17/Python.Python.3.13.installer.yaml"
+  },
+  "ffmpeg": {
+    "version": "9.0.2",
+    "url": "https://github.com/GyanD/codexffmpeg/releases/download/9.0.2/ffmpeg-9.0.2-full_build.zip",
+    "sha256": "759D0A9831C436A0EB331AD36F236C06CB04AAA0005DA46571F0E9D3D9206F6B",
+    "file": "ffmpeg-9.0.2-full_build.zip",
+    "directory": "ffmpeg-9.0.2-full_build",
+    "manifest": "https://github.com/microsoft/winget-pkgs/blob/master/manifests/g/Gyan/FFmpeg/9.0.2/Gyan.FFmpeg.installer.yaml"
+  },
+  "vcredist": {
+    "version": "14.52.37029.0",
+    "url": "https://download.visualstudio.microsoft.com/download/pr/78d061c5-9ef3-42ab-98ed-3309d1095dc4/9C02C9ED120F671B900E6B9471D890E3B2414117A7E53F4AE2E855466FA2B7C9/VC_redist.x64.exe",
+    "sha256": "9C02C9ED120F671B900E6B9471D890E3B2414117A7E53F4AE2E855466FA2B7C9",
+    "file": "vc-redist-14.52.37029.0-x64.exe",
+    "manifest": "https://github.com/microsoft/winget-pkgs/blob/master/manifests/m/Microsoft/VCRedist/2015%2B/x64/14.52.37029.0/Microsoft.VCRedist.2015%2B.x64.installer.yaml"
+  }
+}
