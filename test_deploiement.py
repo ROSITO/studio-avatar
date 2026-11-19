@@ -8,6 +8,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 import urllib.error
 import urllib.request
 
@@ -41,6 +42,42 @@ class SelectionTest(unittest.TestCase):
         self.assertGreater(memoire.physique(), 0)
         self.assertGreater(memoire.disponible(), 0)
         self.assertGreater(memoire.empreinte(os.getpid()), 0)
+
+
+class InstallationRetryTest(unittest.TestCase):
+    def test_interrupted_managed_install_can_be_retried(self):
+        host = dict(os='Windows', arch='amd64', ram_gib=32, nvidia=[])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with patch.object(installer, 'ROOT', root), patch.object(installer, 'machine', return_value=host), \
+                 patch.object(sys, 'argv', ['installer.py', '--device', 'cpu']), \
+                 patch.object(sys, 'version_info', (3, 13)), \
+                 patch.object(installer.shutil, 'which', return_value='available'), \
+                 patch.object(installer.venv, 'EnvBuilder'), \
+                 patch.object(installer.subprocess, 'run') as run:
+                run.side_effect = subprocess.CalledProcessError(1, 'pip')
+                with self.assertRaises(subprocess.CalledProcessError):
+                    installer.main()
+                runtime = root / '.venv-omnivoice'
+                self.assertTrue((runtime / '.studio-managed.json').exists())
+                self.assertFalse((runtime / '.studio-installation.json').exists())
+                run.side_effect = None
+                self.assertEqual(installer.main(), 0)
+                self.assertEqual(json.loads((runtime / '.studio-installation.json').read_text())['device'], 'cpu')
+
+    def test_unmanaged_runtime_is_preserved(self):
+        host = dict(os='Windows', arch='amd64', ram_gib=32, nvidia=[])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); runtime = root / '.venv-omnivoice'; runtime.mkdir()
+            sentinel = runtime / 'existing.txt'; sentinel.write_text('keep')
+            with patch.object(installer, 'ROOT', root), patch.object(installer, 'machine', return_value=host), \
+                 patch.object(sys, 'argv', ['installer.py']), patch.object(sys, 'version_info', (3, 13)), \
+                 patch.object(installer.shutil, 'which', return_value='available'), \
+                 patch.object(installer.subprocess, 'run') as run:
+                with self.assertRaises(SystemExit):
+                    installer.main()
+                run.assert_not_called()
+                self.assertEqual(sentinel.read_text(), 'keep')
 
 
 class LauncherTest(unittest.TestCase):

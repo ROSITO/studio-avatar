@@ -44,3 +44,6 @@ venv/
 *.key
 *.p12
 *.pfx
+
+# Windows bootstrap: local interpreter selection
+/.studio-python.txt

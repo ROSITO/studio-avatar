@@ -130,13 +130,21 @@ Open [http://127.0.0.1:8765](http://127.0.0.1:8765). On macOS you can also run
 
 ### Installation adapted to the machine
 
-Run `python installer.py --plan` to inspect OS, architecture, RAM, detected NVIDIA
-VRAM and the proposed engine without changing anything. On Windows, install
-Python 3.12 (or 3.13) and FFmpeg on PATH, then double-click `installer.bat`.
-It prefers Python 3.12/3.13, installs an isolated voice runtime, checks dependencies
-and imports, and records the successful backend in that environment. Model weights
-are downloaded separately and explicitly from **Modeles**. To retry a failed first
-installation, rename the incomplete `.venv-omnivoice` directory and run again.
+On Windows x64, extract or clone the repository into a writable folder and
+**double-click `installer.bat`**. No manual Python, pip or FFmpeg setup is needed:
+the bootstrap reuses Python 3.13/3.12 x64 or installs Python 3.13, installs missing
+FFmpeg/FFprobe and Microsoft Visual C++ runtime, then installs the appropriate
+voice engine in its own virtual environment. Internet access and WinGet (App
+Installer) are required for missing prerequisites. Windows may request permission
+for the Microsoft runtime. If WinGet is unavailable or blocked by company policy,
+the installer reports the prerequisite it could not install.
+
+Then double-click `lancer.bat`. The selected Python path is saved locally and
+PATH changes are applied in the launch session; no terminal restart is needed.
+Model weights are still downloaded explicitly from **Modeles**. An interrupted
+installation created by this installer can be retried by running it again; existing
+unmanaged runtimes are preserved. `installer.bat --plan` reports the plan without
+installing anything. On other platforms, use `python installer.py --plan`.
 
 - Apple Silicon: MLX voice runtime; experimental Wan animation is an explicit
   `python installer.py --engine animation` option. LTX remains a separate install.
@@ -154,11 +162,9 @@ currently provided for Windows. A Windows laptop with 32 GB RAM and possibly
 
 ### Windows
 
-Install Python 3.10+ and FFmpeg (`ffmpeg.exe` and `ffprobe.exe` must be on
-`PATH`). Extract or clone the repository into a writable folder, then double-click
-`lancer.bat`. The launcher checks prerequisites, waits for the local server, then
-opens the browser. Keep its console open; Ctrl+C stops the server. No administrator
-rights are required. `py -3 lancer.py --no-browser` starts without opening a browser.
+Run `installer.bat` once, then `lancer.bat`. The launcher checks prerequisites,
+waits for the local server, then opens the browser. Keep its console open;
+Ctrl+C stops the server. `lancer.bat --no-browser` starts without opening a browser.
 
 Windows configuration uses environment variables, not `source .env`. For example,
 in Command Prompt: `set "STUDIO_PORT=8766"` then `lancer.bat`. The `.env` example

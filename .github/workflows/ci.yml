@@ -42,12 +42,20 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: '3.12'
+          python-version: '3.13'
       - name: Install FFmpeg
         run: choco install ffmpeg --yes --no-progress
+      - name: Validate Windows bootstrap syntax
+        shell: powershell
+        run: |
+          $parseErrors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD 'windows.ps1'), [ref]$null, [ref]$parseErrors) | Out-Null
+          if ($parseErrors) { throw ($parseErrors | Out-String) }
       - name: Verify installer selection and batch launcher
         run: python -m unittest test_deploiement -v
       - name: Report installation plan without installing models
-        run: python installer.py --plan
+        run: .\installer.bat --plan < NUL
+        shell: cmd
       - name: Install and verify Windows CPU voice runtime (no model weights)
-        run: python installer.py --engine omnivoice --device cpu
+        run: .\installer.bat --engine omnivoice --device cpu < NUL
+        shell: cmd

@@ -72,7 +72,7 @@ def main():
         raise SystemExit('Python 3.10+ requis.')
     missing = [name for name in ('ffmpeg', 'ffprobe') if not shutil.which(name)]
     if missing:
-        raise SystemExit('Installez FFmpeg, puis ajoutez ffmpeg et ffprobe au PATH avant de relancer.')
+        raise SystemExit('Prerequis FFmpeg absents. Sous Windows, lancez installer.bat pour les installer automatiquement.')
     engine = choice['engine']
     if engine == 'interface':
         print('Interface prete : lancer.bat (Windows) ou python3 lancer.py.')
@@ -84,10 +84,15 @@ def main():
         return 0
     target = ROOT / '.venv-omnivoice'
     marker = target / '.studio-installation.json'
-    if target.exists() and not marker.exists():
+    owner = target / '.studio-managed.json'
+    if target.exists() and not marker.exists() and not owner.exists():
         raise SystemExit('Runtime existant sans manifeste: conservez-le ou renommez .venv-omnivoice avant une installation propre.')
+    if owner.exists() and json.loads(owner.read_text(encoding='utf-8')).get('device') != choice['device']:
+        raise SystemExit('Installation incomplete avec un autre backend : renommez .venv-omnivoice pour le conserver puis relancez.')
     if marker.exists() and json.loads(marker.read_text(encoding='utf-8')).get('device') != choice['device']:
         raise SystemExit('Backend different du runtime existant: renommez .venv-omnivoice pour le conserver puis relancez.')
+    target.mkdir(exist_ok=True)
+    owner.write_text(json.dumps(dict(engine=engine, device=choice['device'])), encoding='utf-8')
     venv.EnvBuilder(with_pip=True).create(target)
     python = target / ('Scripts/python.exe' if os.name == 'nt' else 'bin/python')
     base = [str(python), '-m', 'pip', 'install']
@@ -100,9 +105,9 @@ def main():
     subprocess.run([str(python), '-m', 'pip', 'check'], check=True)
     probe = "import torch, omnivoice, soundfile; device=" + repr(choice['device']) + "; assert device == 'cpu' or (torch.cuda.is_available() if device == 'cuda' else torch.backends.mps.is_available()); print('Runtime OK:', device)"
     subprocess.run([str(python), '-c', probe], check=True)
-    marker.write_text(json.dumps(dict(engine=engine, device=choice['device'], python=platform.python_version()), indent=2), encoding='utf-8')
     with (target / 'requirements-installed.txt').open('w', encoding='utf-8') as installed:
         subprocess.run([str(python), '-m', 'pip', 'freeze'], stdout=installed, check=True)
+    marker.write_text(json.dumps(dict(engine=engine, device=choice['device'], python=platform.python_version()), indent=2), encoding='utf-8')
     print('Runtime installe et verifie. Telechargez ensuite les poids OmniVoice depuis Modeles. Aucune voix personnelle incluse.')
     return 0
 

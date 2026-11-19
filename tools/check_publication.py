@@ -9,7 +9,7 @@ private_dirs = {'performances', 'voix', 'sources', 'audios', 'clips', 'ponts', '
 errors = []
 for name in filter(None, files):
     p = Path(name)
-    if p.parts[0] in private_dirs or p.name in {'taches.json', '.env', 'brandkit.png', 'modeles.json', '.modeles-etat.json', '.modeles-plans.json'} or p.suffix.lower() in {'.mp4', '.wav', '.mp3', '.pth', '.pt', '.ckpt', '.safetensors', '.pem', '.key', '.p12', '.pfx'}:
+    if p.parts[0] in private_dirs or p.name in {'taches.json', '.studio-python.txt', '.env', 'brandkit.png', 'modeles.json', '.modeles-etat.json', '.modeles-plans.json'} or p.suffix.lower() in {'.mp4', '.wav', '.mp3', '.pth', '.pt', '.ckpt', '.safetensors', '.pem', '.key', '.p12', '.pfx'}:
         errors.append(name + ': private/runtime artifact')
     data = (root / p).read_bytes()
     if (p.name.startswith('.env') and p.name != '.env.example') or p.parts[0] in {'.ssh', '.aws'}:
