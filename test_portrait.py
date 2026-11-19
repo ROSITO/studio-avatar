@@ -15,7 +15,7 @@ class PortraitTest(unittest.TestCase):
             self.cmds.append([str(c) for c in cmd])
             sortie = self.cmds[-1][self.cmds[-1].index('--output') + 1]
             for s in t['seeds']: Path(sortie.replace('.png', f'_seed_{s}.png' if len(t['seeds']) > 1 else '.png')).write_bytes(b'png')   # comme mflux
-        self.patches = [patch.object(studio, 'ICI', self.root), patch.object(studio, 'sauver', lambda: None), patch.object(studio, 'lancer', lancer)]
+        self.patches = [patch.object(modeles.platform, 'system', return_value='Darwin'), patch.object(modeles.platform, 'machine', return_value='arm64'), patch.object(studio, 'ICI', self.root), patch.object(studio, 'sauver', lambda: None), patch.object(studio, 'lancer', lancer)]
         for p in self.patches: p.start()
     def tearDown(self):
         for p in self.patches: p.stop()
@@ -45,6 +45,6 @@ class PortraitTest(unittest.TestCase):
         m = modeles.Gestionnaire(s); entree = m.entry('flux2-klein4b')
         self.assertFalse(m.selection()['image']['installe'])
         for f in entree['required']: (ailleurs / f).parent.mkdir(parents=True, exist_ok=True); (ailleurs / f).write_bytes(b'x')
-        self.assertEqual(m.selection()['image'], dict(id='flux2-klein4b', path=str(ailleurs), installe=True))
+        self.assertEqual(m.selection()['image'], dict(id='flux2-klein4b', path=str(ailleurs), installe=True, compatible=True, raison_incompatibilite=''))
 
 if __name__ == '__main__': unittest.main()

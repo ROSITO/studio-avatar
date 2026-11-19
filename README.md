@@ -264,7 +264,14 @@ GPU worker's process handle. Cached preview media stays in the ignored local
 
 ## Model catalogue and downloads
 
-The **Modèles** page provides:
+The **Modèles** page adapts to the current OS and processor. On Windows/Linux x64,
+OmniVoice is the default voice engine; downloads and activation of models requiring
+the studio's Apple Silicon integrations are blocked. Incompatible models are listed
+separately with an explanation. Existing incompatible voice selections are switched
+to OmniVoice without deleting any weights. A model's compatibility does not establish
+that its runtime or weights are already installed.
+
+On Apple Silicon, the catalogue provides:
 
 - LTX-2.3 Q4, Q8, and BF16 packs for the current distilled recipe;
 - the shared Gemma 3 12B 4-bit text encoder;
