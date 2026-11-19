@@ -134,10 +134,15 @@ On Windows x64, extract or clone the repository into a writable folder and
 **double-click `installer.bat`**. No manual Python, pip or FFmpeg setup is needed:
 the bootstrap reuses Python 3.13/3.12 x64 or installs Python 3.13, installs missing
 FFmpeg/FFprobe and Microsoft Visual C++ runtime, then installs the appropriate
-voice engine in its own virtual environment. Internet access and WinGet (App
-Installer) are required for missing prerequisites. Windows may request permission
-for the Microsoft runtime. If WinGet is unavailable or blocked by company policy,
-the installer reports the prerequisite it could not install.
+voice engine in its own virtual environment. No WinGet or Microsoft Store is required. Missing prerequisites are downloaded
+directly from Python.org, the FFmpeg build publisher and Microsoft, then verified
+against pinned SHA-256 hashes before use. Internet access is required. Windows
+may request permission for the Microsoft runtime; company policy can still block
+installation. FFmpeg is installed locally in `%LOCALAPPDATA%\StudioAvatar\tools`
+and added to PATH only for Studio Avatar, without changing the global PATH.
+Download versions, URLs, hashes and manifest sources are in
+`windows-dependencies.json`. Interrupted downloads are retried; verified downloads
+are reused from the local cache.
 
 Then double-click `lancer.bat`. The selected Python path is saved locally and
 PATH changes are applied in the launch session; no terminal restart is needed.

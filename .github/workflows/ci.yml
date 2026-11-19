@@ -49,8 +49,13 @@ jobs:
         shell: powershell
         run: |
           $parseErrors = $null
-          [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD 'windows.ps1'), [ref]$null, [ref]$parseErrors) | Out-Null
-          if ($parseErrors) { throw ($parseErrors | Out-String) }
+          foreach ($file in @('windows.ps1', 'windows-downloads.ps1', 'test_windows_downloads.ps1')) {
+            [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD $file), [ref]$null, [ref]$parseErrors) | Out-Null
+            if ($parseErrors) { throw ($parseErrors | Out-String) }
+          }
+      - name: Test direct downloads without network or WinGet
+        shell: powershell
+        run: .\test_windows_downloads.ps1
       - name: Verify installer selection and batch launcher
         run: python -m unittest test_deploiement -v
       - name: Report installation plan without installing models

@@ -7,11 +7,16 @@ $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
 $env:PYTHONUTF8 = '1'
 $env:PYTHONIOENCODING = 'utf-8'
+$packages = Get-Content -LiteralPath (Join-Path $root 'windows-dependencies.json') -Raw | ConvertFrom-Json
+$studioHome = Join-Path $env:LOCALAPPDATA 'StudioAvatar'
+$cache = Join-Path $studioHome 'downloads'
+$tools = Join-Path $studioHome 'tools'
+. (Join-Path $root 'windows-downloads.ps1')
 
 function Update-SessionPath {
     # Keep custom paths from this console and add changes made by installers.
     $env:Path = "$env:Path;" + [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' +
-        [Environment]::GetEnvironmentVariable('Path', 'User') + ";$env:LOCALAPPDATA\Microsoft\WinGet\Links"
+        [Environment]::GetEnvironmentVariable('Path', 'User') + ";$env:LOCALAPPDATA\Microsoft\WinGet\Links;" + (Join-Path $tools ($packages.ffmpeg.directory + '\bin'))
 }
 
 function Test-StudioPython([string]$Executable) {
@@ -48,20 +53,6 @@ function Find-StudioPython {
     return $null
 }
 
-function Install-Package([string]$Id, [switch]$UserScope) {
-    if (-not (Get-Command winget.exe -ErrorAction SilentlyContinue)) {
-        throw 'WinGet est absent. Installez/actualisez App Installer depuis https://apps.microsoft.com/detail/9nblggh4nns1 puis relancez installer.bat.'
-    }
-    Write-Host "Installation du prerequis : $Id"
-    $arguments = @('install', '--id', $Id, '--exact', '--source', 'winget', '--architecture', 'x64',
-        '--accept-source-agreements', '--accept-package-agreements', '--disable-interactivity', '--silent')
-    if ($UserScope) { $arguments += @('--scope', 'user') }
-    & winget.exe @arguments
-    # WinGet also returns a nonzero code when the latest version is already installed.
-    # Callers always verify the prerequisite afterwards rather than trusting this code.
-    Update-SessionPath
-}
-
 try {
     Update-SessionPath
     if ($env:PROCESSOR_ARCHITECTURE -ne 'AMD64' -and $env:PROCESSOR_ARCHITEW6432 -ne 'AMD64') {
@@ -76,15 +67,18 @@ try {
             exit 0
         }
         if (-not $python) {
-            Install-Package 'Python.Python.3.13' -UserScope
+            $executable = Get-VerifiedDownload $packages.python $cache
+            Invoke-PrerequisiteInstaller $executable @('/quiet', 'InstallAllUsers=0', 'PrependPath=1', 'Include_launcher=1', 'InstallLauncherAllUsers=0', 'Include_test=0')
+            Update-SessionPath
             $python = Find-StudioPython
-            if (-not $python) { throw 'Python 3.13 x64 reste introuvable apres installation. Consultez la sortie WinGet ci-dessus.' }
+            if (-not $python) { throw "Python 3.13 x64 reste introuvable apres installation. Consultez les erreurs ci-dessus." }
         }
         if (-not (Get-Command ffmpeg.exe -ErrorAction SilentlyContinue) -or -not (Get-Command ffprobe.exe -ErrorAction SilentlyContinue)) {
-            Install-Package 'Gyan.FFmpeg' -UserScope
+            $bin = Install-PortableFFmpeg $packages.ffmpeg $cache $tools
+            $env:Path = "$bin;$env:Path"
         }
         if (-not (Get-Command ffmpeg.exe -ErrorAction SilentlyContinue) -or -not (Get-Command ffprobe.exe -ErrorAction SilentlyContinue)) {
-            throw 'FFmpeg/FFprobe introuvables apres installation. Consultez la sortie WinGet ci-dessus.'
+            throw "FFmpeg/FFprobe introuvables apres installation. Consultez les erreurs ci-dessus."
         }
         & ffmpeg.exe -version >$null
         if ($LASTEXITCODE -ne 0) { throw 'FFmpeg est present mais ne demarre pas.' }
@@ -92,7 +86,10 @@ try {
         if ($LASTEXITCODE -ne 0) { throw 'FFprobe est present mais ne demarre pas.' }
         $vcKey = 'HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64'
         $vc = Get-ItemProperty -Path $vcKey -ErrorAction SilentlyContinue
-        if (-not $vc -or $vc.Installed -ne 1) { Install-Package 'Microsoft.VCRedist.2015+.x64' }
+        if (-not $vc -or $vc.Installed -ne 1) {
+            $executable = Get-VerifiedDownload $packages.vcredist $cache
+            Invoke-PrerequisiteInstaller $executable @('/install', '/passive', '/norestart')
+        }
         $vc = Get-ItemProperty -Path $vcKey -ErrorAction SilentlyContinue
         if (-not $vc -or $vc.Installed -ne 1) {
             throw 'Le runtime Visual C++ x64 est requis. Une autorisation Windows peut etre necessaire; relancez installer.bat apres installation.'
