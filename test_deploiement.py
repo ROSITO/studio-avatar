@@ -88,6 +88,7 @@ class LauncherTest(unittest.TestCase):
         # Test the actual batch entry point on Windows, including a path with spaces.
         command = ['cmd', '/c', str(ROOT / 'lancer.bat'), '--no-browser'] if os.name == 'nt' else [sys.executable, str(ROOT / 'lancer.py'), '--no-browser']
         with tempfile.TemporaryDirectory(prefix='studio launch ') as directory, tempfile.TemporaryFile() as logs:
+            uploaded = None
             process = subprocess.Popen(command, cwd=directory, env=env, stdout=logs, stderr=logs)
             opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
             try:
@@ -106,6 +107,20 @@ class LauncherTest(unittest.TestCase):
                 for route in ('/', '/api/modeles', '/api/voix'):
                     with opener.open(f'http://127.0.0.1:{port}{route}', timeout=10) as response:
                         self.assertEqual(response.status, 200)
+                # Exercise the reported workflow: PUT a JPEG, refresh the library,
+                # then fetch the image displayed in Mes avatars.
+                jpeg = subprocess.check_output(['ffmpeg', '-v', 'error', '-f', 'lavfi',
+                    '-i', 'color=c=blue:s=16x16', '-frames:v', '1', '-f', 'image2pipe', '-vcodec', 'mjpeg', '-'])
+                name = f'test-import-{port}.jpg'
+                request = urllib.request.Request(f'http://127.0.0.1:{port}/api/envoi?dossier=sources&nom={name}', data=jpeg, method='PUT')
+                with opener.open(request, timeout=5) as response:
+                    uploaded = json.load(response)['nom']
+                with opener.open(f'http://127.0.0.1:{port}/api/etat', timeout=10) as response:
+                    state = json.load(response)
+                self.assertIn(uploaded, [item['nom'] for item in state['fichiers']['sources']])
+                with opener.open(f'http://127.0.0.1:{port}/f/sources/{uploaded}', timeout=5) as response:
+                    self.assertEqual(response.headers['Content-Type'], 'image/jpeg')
+                    self.assertEqual(response.read(), jpeg)
                 with self.assertRaises(urllib.error.HTTPError) as error:
                     opener.open(f'http://127.0.0.1:{port}/f/audios/..%5Cstudio.py', timeout=2)
                 self.assertEqual(error.exception.code, 404)
@@ -119,6 +134,8 @@ class LauncherTest(unittest.TestCase):
                     process.wait(timeout=10)
                 except subprocess.TimeoutExpired:
                     process.kill(); process.wait()
+                if uploaded:
+                    (ROOT / 'sources' / uploaded).unlink(missing_ok=True)
 
 
 if __name__ == '__main__':

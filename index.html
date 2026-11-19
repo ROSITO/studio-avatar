@@ -221,6 +221,7 @@ pre { background:#080c11; }
 
   <div class="etape actif" id="etape-1">
     <p class="question">Choisissez votre avatar</p><p class="section-intro">Sélectionnez un visage dans votre bibliothèque ou importez une photo.</p>
+    <p data-import-photo class="mut" role="status" aria-live="polite" hidden></p>
     <div class="grille" id="choix-avatar"></div>
     <div class="navig"><span class="mut" id="msg-1"></span><button id="suiv-1" onclick="aller(2)" disabled>Suivant</button></div>
   </div>
@@ -309,6 +310,7 @@ pre { background:#080c11; }
 <div class="page" id="p-avatars">
   <h2>Mes avatars</h2>
   <p class="intro">Ajoute une photo (assise, de face, bouche fermée, mains visibles) : le Mac lui prépare tout seul un geste par situation (neutre, curieux, enthousiaste, réfléchi, sérieux, chaleureux), leurs transitions et un clip de repos, une fois pour toutes (≈ 1 h 20). Ensuite, chaque vidéo de cet avatar est rapide.</p>
+  <p data-import-photo class="mut" role="status" aria-live="polite" hidden></p>
   <div class="grille" id="grille-avatars"></div>
   <div id="fiche-avatar"></div>
 </div>
@@ -320,6 +322,7 @@ pre { background:#080c11; }
   <label for="cr-prompt">Description (en anglais de préférence)</label>
   <textarea id="cr-prompt" placeholder="A woman in her thirties with short brown hair, navy sweater, seated on a light grey sofa in a bright living room"></textarea>
   <label>Références (jusqu'à 4, facultatif)</label>
+  <p data-import-photo class="mut" role="status" aria-live="polite" hidden></p>
   <div id="cr-refs" style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:8px"></div>
   <p><label class="sec petit" style="display:inline-block;cursor:pointer">＋ Ajouter une photo de référence<input type="file" accept="image/*" hidden onchange="ajouterRef(this.files[0]);this.value=''"></label>
      <select id="cr-depuis" onchange="if(this.value){CR_REFS.push({dossier:'sources',nom:this.value,role:'visage'});this.value='';dessinerCreation()}" style="max-width:260px"></select></p>
@@ -409,15 +412,49 @@ const depot = texte => `<div class="depot" role="button" tabindex="0" aria-label
 function choisirFichier(type) { typeFichier = type; $('fichier').accept = type === 'photo' ? 'image/*' : 'audio/*'; $('fichier').click(); }
 $('fichier').onchange = e => { envoyer(e.target.files[0], typeFichier); e.target.value = ''; };
 function deposer(e) { e.preventDefault(); e.currentTarget.classList.remove('survol'); const fi = e.dataTransfer.files[0]; if (fi) envoyer(fi, fi.type.startsWith('audio') ? 'audio' : 'photo'); }
-async function envoyer(fi, type) {
-  if (!fi) return;
-  if (type === 'photo' && !fi.type.startsWith('image')) return alert("Ce fichier n'est pas une image.");
-  if (type === 'audio' && !fi.type.startsWith('audio')) return alert("Ce fichier n'est pas un audio.");
-  const r = await (await fetch(`/api/envoi?dossier=${type === 'audio' ? 'audios' : 'sources'}&nom=${encodeURIComponent(fi.name)}`, { method: 'PUT', body: fi })).json();
-  await rafraichir(true);
-  if (type === 'photo') { CH.avatar = r.nom; FICHE = r.nom; } else { $('audio').value = r.nom; majAudio(); }
-  dessiner();
+// BEGIN IMPORT PHOTO
+let IMPORT_PHOTO_EN_COURS = false;
+function messageImportPhoto(texte, erreur=false) {
+  document.querySelectorAll('[data-import-photo]').forEach(node => {
+    node.textContent = texte; node.hidden = !texte;
+    node.className = erreur ? 'tl-error' : 'mut';
+    node.setAttribute('role', erreur ? 'alert' : 'status');
+  });
 }
+function verifierPhoto(fi) {
+  if (!/\.(jpe?g|png|webp|avif|gif|bmp)$/i.test(fi.name))
+    throw Error('Format de photo non pris en charge. Utilisez une image JPG, PNG ou WebP.');
+}
+async function importerFichier(fi, dossier) {
+  const response = await fetch(`/api/envoi?dossier=${dossier}&nom=${encodeURIComponent(fi.name)}`, {method:'PUT', body:fi});
+  let resultat;
+  try { resultat = await response.json(); }
+  catch(e) { throw Error(`Le serveur n’a pas confirmé l’import (HTTP ${response.status}). Vérifiez qu’il fonctionne toujours.`); }
+  if (!response.ok || !resultat.nom) throw Error(resultat.erreur || `Import impossible (HTTP ${response.status}).`);
+  return resultat;
+}
+async function envoyer(fi, type) {
+  if (!fi || IMPORT_PHOTO_EN_COURS) return;
+  let importe = false;
+  try {
+    if (type === 'photo') verifierPhoto(fi);
+    if (type === 'audio' && !fi.type.startsWith('audio')) throw Error("Ce fichier n'est pas un audio.");
+    IMPORT_PHOTO_EN_COURS = true;
+    messageImportPhoto(`Import de ${fi.name}…`);
+    const r = await importerFichier(fi, type === 'audio' ? 'audios' : 'sources');
+    importe = true;
+    if (type === 'photo') { CH.avatar = r.nom; FICHE = r.nom; }
+    await rafraichir(true);
+    if (type === 'audio') { $('audio').value = r.nom; majAudio(); }
+    dessiner();
+    messageImportPhoto(type === 'photo' ? `Avatar ajouté : ${fi.name}.` : `Audio ajouté : ${fi.name}.`);
+  } catch(e) {
+    const message = (importe ? 'Fichier enregistré, mais la bibliothèque n’a pas pu être actualisée : ' : 'Import impossible : ') + e.message;
+    messageImportPhoto(message, true);
+    if (type === 'audio') alert(message);
+  } finally { IMPORT_PHOTO_EN_COURS = false; }
+}
+// END IMPORT PHOTO
 
 // ---------------- étape 2 ----------------
 function source(s) {
@@ -700,11 +737,20 @@ function dessiner() {
 let CR_REFS = [];
 const ROLES_REF = {visage:'Visage', tenue:'Tenue', decor:'Décor', style:'Style / lumière'};
 async function ajouterRef(fi) {
-  if (!fi || !fi.type.startsWith('image')) return alert("Ce fichier n'est pas une image.");
-  if (CR_REFS.length >= 4) return alert('4 références au maximum.');
-  const r = await (await fetch(`/api/envoi?dossier=references&nom=${encodeURIComponent(fi.name)}`, { method: 'PUT', body: fi })).json();
-  CR_REFS.push({dossier:'references', nom:r.nom, role:CR_REFS.length ? 'tenue' : 'visage'}); dessinerCreation();
+  if (!fi || IMPORT_PHOTO_EN_COURS) return;
+  try {
+    verifierPhoto(fi);
+    if (CR_REFS.length >= 4) throw Error('4 références au maximum.');
+    IMPORT_PHOTO_EN_COURS = true;
+    messageImportPhoto(`Import de ${fi.name}…`);
+    const r = await importerFichier(fi, 'references');
+    CR_REFS.push({dossier:'references', nom:r.nom, role:CR_REFS.length ? 'tenue' : 'visage'});
+    dessinerCreation();
+    messageImportPhoto(`Référence ajoutée : ${fi.name}.`);
+  } catch(e) { messageImportPhoto('Import impossible : ' + e.message, true); }
+  finally { IMPORT_PHOTO_EN_COURS = false; }
 }
+
 function dessinerCreation() {
   const sel = MODELES?.selection?.image, nom = MODELES?.catalogue?.find(m => m.id === sel?.id)?.nom;
   $('cr-modele').innerHTML = !MODELES ? 'Chargement des modèles…' : sel?.installe ? `Modèle : <b>${esc(nom || sel.id)}</b> · à changer dans la page Modèles.${sel.id.startsWith('flux3') ? ' <b>Licence non commerciale.</b>' : ''}` : `<span class="err">Aucun modèle image installé : installez FLUX.2 Klein 4B dans la page Modèles.</span>`;
