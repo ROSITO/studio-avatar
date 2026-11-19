@@ -19,6 +19,8 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: ${{ matrix.python }}
+      - name: Install test dependencies
+        run: python -m pip install numpy
       - name: Install FFmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - name: Compile Python
@@ -28,6 +30,24 @@ jobs:
       - name: Validate browser script syntax
         run: node -e 'const fs = require("fs"); new Function(fs.readFileSync("index.html", "utf8").split("<script>")[1].split("</script>")[0]);'
       - name: Test generation progress parsing
-        run: node test_progression.js && node test_balises.js
+        run: node test_progression.js && node test_balises.js && node test_voix_lot.js
       - name: Verify publication boundary
         run: python tools/check_publication.py
+  windows-launcher:
+    name: Windows launcher and architecture detection
+    runs-on: windows-latest
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - name: Install FFmpeg
+        run: choco install ffmpeg --yes --no-progress
+      - name: Verify installer selection and batch launcher
+        run: python -m unittest test_deploiement -v
+      - name: Report installation plan without installing models
+        run: python installer.py --plan
+      - name: Install and verify Windows CPU voice runtime (no model weights)
+        run: python installer.py --engine omnivoice --device cpu

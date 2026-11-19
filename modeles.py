@@ -25,6 +25,9 @@ CATALOGUE += [dict(id=mid,nom=nom,role='synthese',ram=ram,description=descriptio
       ('qwen3-tts-mlx','Qwen3-TTS 0.6B · MLX 4 bits','mlx-community/Qwen3-TTS-12Hz-0.6B-Base-4bit',8,
        'Clonage vocal local multilingue · moteur léger Apple Silicon · Apache 2.0.',
        ['config.json','model.safetensors','speech_tokenizer/model.safetensors','vocab.json','merges.txt']),
+      ('qwen3-tts-17b-mlx','Qwen3-TTS 1.7B · MLX 8 bits','mlx-community/Qwen3-TTS-12Hz-1.7B-Base-8bit',12,
+       'Clonage vocal local plus fidèle · Apple Silicon · Apache 2.0 · mémoire plus élevée.',
+       ['config.json','model.safetensors','speech_tokenizer/model.safetensors','vocab.json','merges.txt']),
       ('drama3-mlx','Fish Audio Drama 3 · MLX 4 bits','mlx-community/fish-audio-drama-3-4bit',32,
        'Port communautaire Apple Silicon · environ 24 Go de poids, mémoire élevée · licence Fish Audio Community. À tester avant les vidéos longues.',
        ['config.json','codec.safetensors','tokenizer.json']+['model-%05d.safetensors'%i for i in range(1,7)])]]

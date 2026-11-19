@@ -88,27 +88,43 @@ class Atelier:
         prompt = str(d.get('prompt', '')).strip()
         if len(prompt) > 2000: raise ValueError('La consigne complémentaire est limitée à 2000 caractères.')
         prompt = prompt or PROMPT_DEFAUT
+        backend=d.get('backend','torch')
+        if backend not in ('torch','mlx'):raise ValueError('Backend vidéo inconnu.')
+        profil=d.get('profil','qualite')
+        if profil not in ('apercu','qualite'):raise ValueError('Choisissez aperçu rapide ou qualité complète.')
+        int8=d.get('int8',False)
+        if not isinstance(int8,bool):raise ValueError('Le mode 8 bits doit être activé ou désactivé.')
+        int4=d.get('int4',os.environ.get('STUDIO_WAN_INT4','0')=='1')
+        if backend=='mlx':
+            if int8:raise ValueError('Le backend MLX utilise les projections 4 bits.')
+            int4=True
+        if int4 and int8:raise ValueError('Choisissez une seule précision de poids.')
+        if not isinstance(int4,bool):raise ValueError('Le mode 4 bits doit être activé ou désactivé.')
         seed = d.get('seed')
         if seed is None: seed = secrets.randbelow(2**31)
         if isinstance(seed, bool) or not isinstance(seed, int) or not 0 <= seed < 2**31: raise ValueError('Seed invalide.')
         return dict(avatar=image.name, video=video.name, debut=start, duree=length, prompt=prompt, seed=seed,
-                    conserver_audio=bool(d.get('conserver_audio', True)))
+                    conserver_audio=bool(d.get('conserver_audio', True)),int4=int4,int8=int8,profil=profil,backend=backend)
 
     def demander(self, d, diagnostic=False):
         params = self.valider(d)
+        if not isinstance(d.get('mesurer_etape',False),bool):raise ValueError('Le diagnostic doit être activé ou désactivé.')
         status=self.etat()
         if not status['pret'] and not (diagnostic and status['runtime'] and status['installe']): raise ValueError(status['raison'])
-        budget(diagnostic=diagnostic)  # Also checked again when the queue reaches this job.
+        cap=budget(diagnostic=diagnostic and not d.get('mesurer_etape'))
+        if params['backend']=='mlx' and cap<16*1024**3:raise ValueError('MLX résident : budget borné de 16 Gio requis.')
+        # Admission is checked again when the queue reaches this job.
         t = dict(id=uuid.uuid4().hex[:12], type='animation', params=params, etat='en attente', cree=time.time(),
-                 diagnostic_run=bool(diagnostic), modeles={'animation': dict(id=MODEL_ID, path=str(self.modele()), installe=True)})
+                 diagnostic_run=bool(diagnostic), mesurer_etape=bool(diagnostic and d.get('mesurer_etape') is True), int4=params['int4'], modeles={'animation': dict(id=MODEL_ID, path=str(self.modele()), installe=True)})
         with self.s.VERROU: self.s.TACHES.append(t)
         self.s.sauver()
         return t
 
     def executer(self, t):
         import tempfile
-        cap = budget(diagnostic=t.get('diagnostic_run',False))
+        cap = budget(diagnostic=t.get('diagnostic_run',False) and not t.get('mesurer_etape',False))
         p = self.valider(t['params'])
+        p['int4']=bool(t.get('int4',p['int4']))
         model = t['modeles']['animation']
         if not self.s.GESTION_MODELES.valid(self.s.GESTION_MODELES.entry(MODEL_ID), Path(model['path'])):
             raise ValueError('Les poids Wan-Animate-2 sont incomplets ou le disque est déconnecté.')
@@ -125,8 +141,8 @@ class Atelier:
             request = tmp / 'requete.json'
             request.write_text(json.dumps(dict(image=str(self.fichier('sources', p['avatar'])), video=str(clip),
                                               model=model['path'], output=str(raw), prompt=p['prompt'], seed=p['seed'],
-                                              max_ram=cap, seconds=p['duree'], diagnostic_run=t.get('diagnostic_run',False))))
-            t['etape'] = 'Diagnostic technique Wan-Animate-2 · une étape' if t.get('diagnostic_run') else 'Transfert de performance Wan-Animate-2 · expérimental'; self.s.sauver()
+                                              backend=p['backend'],profil=p['profil'],max_ram=cap, seconds=p['duree'], diagnostic_run=t.get('diagnostic_run',False),mesurer_etape=t.get('mesurer_etape',False),int4=p['int4'],int8=p['int8'])))
+            t['etape'] = ('Diagnostic technique Wan-Animate-2 · deux étapes' if (p['int4'] or p['int8']) and t.get('mesurer_etape') else 'Diagnostic technique Wan-Animate-2 · une étape') if t.get('diagnostic_run') else 'Transfert de performance Wan-Animate-2 · expérimental'; self.s.sauver()
             self.s.lancer(t, [self.runtime(), '-u', self.s.ICI / 'lancer_animation.py', request],
                           {'STUDIO_ANIMATION_EFFECTIVE_LIMIT': str(cap), 'HF_HOME': str(self.s.MODELES / 'huggingface'),
                            'HF_HUB_OFFLINE': '1', 'TRANSFORMERS_OFFLINE': '1', 'PYTORCH_ENABLE_MPS_FALLBACK': '1'})
@@ -138,5 +154,5 @@ class Atelier:
             self.s.lancer(t, cmd)
             mux.replace(out)
         self.s.meta(out, synthetique=True, moteur=MODEL_ID, diagnostic_run=t.get('diagnostic_run',False),
-                    nom='Diagnostic technique Wan (qualité non évaluée)' if t.get('diagnostic_run') else 'Performance · '+Path(p['avatar']).stem, **p)
+                    nom='Diagnostic technique Wan (qualité non évaluée)' if t.get('diagnostic_run') else ('Aperçu rapide · ' if p['profil']=='apercu' else 'Performance · ')+Path(p['avatar']).stem, **p)
         t['resultat'] = dict(fichier=out.name, seed=p['seed'], duree=self.s.duree(out), diagnostic_run=t.get('diagnostic_run',False))

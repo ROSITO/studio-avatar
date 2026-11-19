@@ -36,3 +36,11 @@ venv/
 
 # Private voice profiles and synthesis requests
 /voix/
+
+# Installer diagnostics and machine-specific runtime metadata
+/.installation*.json
+/modeles/
+*.pem
+*.key
+*.p12
+*.pfx

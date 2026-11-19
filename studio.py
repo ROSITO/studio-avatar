@@ -178,6 +178,7 @@ def faire(t):
     if 'modeles' not in t: t['modeles'] = GESTION_MODELES.selection()
     if t['type'].startswith('projet_'):
         projets.executer(t); return
+    if t['type'] == 'conversion': ATELIER_CONVERSION.executer(t); return
     if t['type'] == 'animation': ATELIER_ANIMATION.executer(t); return
     if t['type'] in ('voix','voix_mesure'): ATELIER_VOIX.executer(t); return
     if t['type'] == 'portrait': portrait(t); return
@@ -461,14 +462,21 @@ class H(BaseHTTPRequestHandler):
         if u.path == '/api/modeles': return self.json(GESTION_MODELES.catalogue())
         if u.path == '/api/projets': return self.json(projets.liste())
         if u.path == '/api/animation': return self.json(ATELIER_ANIMATION.etat())
+        if u.path == '/api/conversion': return self.json(ATELIER_CONVERSION.etat())
         if u.path == '/api/voix': return self.json(ATELIER_VOIX.liste())
+        if re.fullmatch(r'/api/taches/[a-f0-9]{8,12}',u.path):
+            t=next((t for t in TACHES if t['id']==u.path.rsplit('/',1)[1]),None)
+            return self.json(t if t else dict(erreur='Tâche introuvable.'),200 if t else 404)
         if u.path.startswith('/api/journal/'):
             f = ICI / 'taches' / f"{nom_sur(u.path.rsplit('/', 1)[1])}.log"
             txt = f.read_text(errors='replace')[-4000:] if f.exists() else ''
             return self.json(dict(texte=re.sub(r'.*\r', '', txt)))
         if u.path.startswith('/f/'):
             d, _, n = unquote(u.path[3:]).partition('/')
-            if d in DOSSIERS and '/' not in n and n: return self.envoyer(ICI / d / n)
+            if d in DOSSIERS and n and '/' not in n and '\\' not in n and n not in ('.', '..'):
+                folder = (ICI / d).resolve()
+                target = (folder / n).resolve()
+                if target.parent == folder and target.is_file(): return self.envoyer(target)
         self.send_error(404)
     def envoyer(self, f, ctype=None):
         if not f.exists(): return self.send_error(404)
@@ -502,7 +510,15 @@ class H(BaseHTTPRequestHandler):
             return self.json(dict(nom=n))
         self.send_error(400)
     def do_POST(self):
-        u = urlparse(self.path); d = json.loads(self.corps() or b'{}')
+        u = urlparse(self.path)
+        try:
+            d=json.loads(self.corps() or b'{}')
+            if not isinstance(d,dict):raise ValueError('Objet JSON attendu.')
+        except (ValueError,UnicodeError) as exc:
+            return self.json(dict(erreur='Requête JSON invalide.',erreur_detail=dict(code='json_invalide',champ='requete',message=str(exc),relancable=False,suggestion='Envoyer un objet JSON UTF-8 valide.')),400)
+        if u.path == '/api/conversion':
+            try: return self.json(ATELIER_CONVERSION.demander(d))
+            except (ValueError, OSError, KeyError) as e: return self.json(dict(erreur=str(e)),400)
         if u.path in ('/api/animation','/api/animation/diagnostic'):
             try: return self.json(ATELIER_ANIMATION.demander(d,diagnostic=u.path.endswith('/diagnostic')))
             except (ValueError, OSError, KeyError) as e: return self.json(dict(erreur=str(e)),400)
@@ -516,6 +532,8 @@ class H(BaseHTTPRequestHandler):
                 elif action=='importer-voicestudio': resultat=ATELIER_VOIX.importer_ancien()
                 else: raise ValueError('Action vocale inconnue')
                 return self.json(resultat)
+            except voix_locale.ErreurValidation as e:
+                return self.json(dict(erreur=str(e),erreur_detail=e.detail),422)
             except (ValueError, OSError, KeyError) as e: return self.json(dict(erreur=str(e)),400)
         if u.path == '/api/apercu':
             try: return self.json(apercus.demander(d.get('projet'), d.get('jonction')))
@@ -575,10 +593,12 @@ import modeles
 import apercus
 import voix as voix_locale
 import animation
+import conversion
 apercus.installer(sys.modules[__name__])
 GESTION_MODELES = modeles.Gestionnaire(sys.modules[__name__])
 projets.installer(sys.modules[__name__])
 ATELIER_VOIX = voix_locale.Atelier(sys.modules[__name__])
+ATELIER_CONVERSION = conversion.Atelier(sys.modules[__name__])
 ATELIER_ANIMATION = animation.Atelier(sys.modules[__name__])
 
 if __name__ == '__main__':

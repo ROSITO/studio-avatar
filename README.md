@@ -128,6 +128,48 @@ Open [http://127.0.0.1:8765](http://127.0.0.1:8765). On macOS you can also run
 `lancer.command`. Install FFmpeg using your system package manager (for example,
 `brew install ffmpeg` on macOS or `sudo apt-get install ffmpeg` on Ubuntu).
 
+### Installation adapted to the machine
+
+Run `python installer.py --plan` to inspect OS, architecture, RAM, detected NVIDIA
+VRAM and the proposed engine without changing anything. On Windows, install
+Python 3.12 (or 3.13) and FFmpeg on PATH, then double-click `installer.bat`.
+It prefers Python 3.12/3.13, installs an isolated voice runtime, checks dependencies
+and imports, and records the successful backend in that environment. Model weights
+are downloaded separately and explicitly from **Modeles**. To retry a failed first
+installation, rename the incomplete `.venv-omnivoice` directory and run again.
+
+- Apple Silicon: MLX voice runtime; experimental Wan animation is an explicit
+  `python installer.py --engine animation` option. LTX remains a separate install.
+- Windows/Linux x64: OmniVoice with PyTorch. Automatic CUDA selection requires
+  NVIDIA, at least 8 GiB VRAM and driver 570+ for the pinned CUDA 12.8 recipe.
+  Otherwise CPU is selected, which can be slow. This conservative threshold is
+  an installer policy, not a guarantee of inference memory use.
+- Other architectures: the installer refuses unvalidated engines.
+
+`--engine interface` checks only the interface prerequisites. `--engine omnivoice
+--device cpu` explicitly selects CPU. GPU backends are checked after installation;
+installation is not a full model inference test. No video generation engine is
+currently provided for Windows. A Windows laptop with 32 GB RAM and possibly
+4 GB VRAM should use the interface and CPU voice option pending hardware testing.
+
+### Windows
+
+Install Python 3.10+ and FFmpeg (`ffmpeg.exe` and `ffprobe.exe` must be on
+`PATH`). Extract or clone the repository into a writable folder, then double-click
+`lancer.bat`. The launcher checks prerequisites, waits for the local server, then
+opens the browser. Keep its console open; Ctrl+C stops the server. No administrator
+rights are required. `py -3 lancer.py --no-browser` starts without opening a browser.
+
+Windows configuration uses environment variables, not `source .env`. For example,
+in Command Prompt: `set "STUDIO_PORT=8766"` then `lancer.bat`. The `.env` example
+is not automatically loaded. Paths containing spaces are supported by the launcher.
+
+The interface and local media editing can run on Windows. LTX-2-MLX, mflux and MLX
+speech generation require Apple Silicon and do not become Windows compatible
+through this launcher. A complete Windows GPU generation pipeline is not provided.
+OmniVoice has a separate PyTorch installer (Python 3.12/3.13); its full Windows
+inference has not been validated here.
+
 ## Configure generation engines
 
 The studio orchestrates external tools. Install the engines separately; model
@@ -565,8 +607,9 @@ small additional residency result is insufficient to enable residency by default
 
 ### Wan MPS execution optimizations
 
-New animation workers retain the same FP32 computation, output resolution,
-40 denoising steps, guidance, and driving-video frames. Two changes reduce
+Animation workers retain the same output resolution, 40 denoising steps,
+guidance, and driving-video frames. Sensitive modulation stays in FP32; the
+latest loader uses BF16 for transformer linear projections (see below). Two changes reduce
 avoidable work:
 
 - Attention uses adaptive query/head tiles instead of fixed 64-query/4-head
@@ -595,3 +638,96 @@ numerical tolerance. This is **not** a full-model speed or quality benchmark.
 Disk offload of the 14B model is still expensive; practical full-quality runtime
 on a 36 GiB Mac has not been established. These optimizations alone do not
 establish that multi-second video generation will finish in minutes.
+
+### Wan direct weight loading and mixed projections
+
+The previous offload reader reopened safetensors shard mappings and converted
+BF16 checkpoint tensors to FP32 on each layer invocation. The new reader indexes
+headers once, reuses file descriptors and reads only each requested tensor into
+its final CPU buffer using positional reads. It then releases tensors through
+Accelerate's usual per-layer offload hooks. No full checkpoint is materialized,
+no additional weight copy is written, and the process ceiling remains unchanged.
+
+Transformer linear projections use BF16 weights and BF16 matrix multiplication,
+returning FP32 activations for the existing reference/motion logic. Time
+embedding, time projection and modulation remain FP32; text/image encoders and
+VAE keep their existing precision. `STUDIO_WAN_MIXED=0` restores FP32 projections
+for comparisons. Unlike the attention tiling change, mixed precision changes
+rounding and still needs full-model visual quality validation.
+
+The diagnostic endpoint accepts `mesurer_etape: true` to measure one complete
+step at the normal resolution and guidance of 3, rather than the tiny technical
+smoke test. Its output remains a **one-step diagnostic**, not a finished quality
+sample. Diagnostics are serialized through the same job queue and guarded by
+the same process memory supervisor.
+
+### Experimental native MPS 4-bit cache
+
+The installed PyTorch MPS backend provides `_convert_weight_to_int4pack` and
+`_weight_int4pack_mm`. An opt-in `int4: true` animation request stores eligible transformer-block
+projections in that packed format. Vector-sized batches use native int4 MPS;
+video-sized batches temporarily dequantize one projection and use BF16 GEMM.
+`STUDIO_WAN_Q4_KERNEL=gemv` restores the direct int4 path for comparisons. It does not switch
+to the different Wan2.2-Animate checkpoint or require downloading new weights.
+
+The first use derives group-64 affine 4-bit weights one projection at a time.
+Atomic safetensors cache files are stored under `.studio-avatar-q4` beside the
+model components, on the model disk. The original checkpoint is unchanged.
+Cache identity includes the source tensor, source file size/mtime, bias source,
+PyTorch version and packing format. The block projections occupy approximately
+8.46 GiB with BF16 scales; about 10 GiB of free model-disk space is needed for
+initial preparation and temporary headroom.
+
+A stable subset is retained on MPS. `STUDIO_WAN_Q4_CACHE_MB` accepts 0–9216 MiB;
+the effective limit is additionally bounded by the process ceiling, current GPU
+allocations and system RAM reserve. Retained tensors are released under pressure.
+Reference K/V caches use BF16 in this mode; modulation remains FP32. Retention
+is cleared before VAE decoding. The worker's total 12 GiB budget is unchanged.
+The MPS allocator fraction now uses `recommended_max_memory()` (its actual
+reference), reserving 2 GiB for CPU buffers inside that total worker budget.
+
+Quantization changes rounding. Kernel/unit tests, deterministic disk reload,
+cache bounds and a tiny reference/motion transformer test are covered; full-model
+visual quality remains experimental. The real-resolution diagnostic uses two
+steps in 4-bit mode to distinguish initial preparation from warm execution.
+A normal request remains at 40 steps; diagnostic videos are explicitly marked
+as diagnostic and are not quality-validation samples.
+
+Local full-resolution one-step measurements: direct mixed BF16 took 172.29 s
+per step; the 4-bit/GEMM diagnostic took 144.94 s then 144.29 s, with a 9.98 GiB
+supervised peak. The measured improvement is about 16%, not the much larger
+attention-only microbenchmark gain. That diagnostic retained almost no useful
+GPU cache hits; 4-bit execution therefore remains opt-in and experimental.
+The newer adaptive allocator low watermark is set before PyTorch imports so
+buffer collection starts within the worker budget, rather than at PyTorch's
+larger default working-set threshold. The high limit and supervisor stay enabled.
+
+Short tests can explicitly request `profil: "apercu"`: 8 steps, 12 fps and a
+192×288 target area (portrait; actual dimensions preserve the image aspect).
+`profil: "qualite"`, and legacy requests omitting the profile, retain 40 steps,
+24 fps and the 256×384 target area. These are **different quality presets**, not
+an equivalent-quality speedup. The frontend defaults new tests to the clearly
+labelled quick preview; 4-bit execution is not exposed in the normal interface.
+Playback/muxing uses the selected fps so motion and original audio retain their
+original duration. Source input is still ingested at 24 fps, then resampled by
+Wan for the selected preset.
+
+Progress now reports completed reference layers and fractional progress across
+denoising layers, conditional/unconditional passes, steps and segments. This
+continues inside a slow step and survives the API's truncated log window.
+Prompt embeddings are also cached atomically on the model disk, keyed by exact
+tokens/masks, dtype, source checkpoint metadata and runtime/helper versions.
+No personal media, derived weights, embeddings or runtime logs are published.
+
+Visual validation of the 8-step 4-bit preview found severe color/face artifacts.
+The 4-bit path is therefore **not validated for usable output**, remains off by
+default, and is available only through explicit API/diagnostic requests for
+research. It must not be described as a successful equivalent-quality speedup.
+
+### Additional local voice capabilities
+
+Qwen3-TTS 1.7B MLX is available alongside the 0.6B model on Apple Silicon.
+Drama speech jobs use bounded passages with per-passage checkpoints and up to
+three attempts. Finished passages are preserved when resuming the same task;
+changed voice references or models require a new task. Voice conversion remains
+an optional externally configured RVC runtime; see [CONVERSION.md](CONVERSION.md).

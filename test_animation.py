@@ -28,6 +28,14 @@ class PerformanceTests(unittest.TestCase):
         self.assertEqual(nom_parametre_wan('blocks.1.block.ffn.0.weight'),'blocks.1.block.ffn.0.weight')
         self.assertEqual(nom_parametre_wan('head.head.weight'),'head.head.weight')
 
+    def test_profil_explicite_et_ancien_mode_conserve(self):
+        self.assertEqual(self.a.valider(self.data)['profil'],'qualite')
+        self.assertEqual(self.a.valider(dict(self.data,profil='apercu',int4=True))['profil'],'apercu')
+        self.assertTrue(self.a.valider(dict(self.data,int4=True))['int4'])
+        self.assertTrue(self.a.valider(dict(self.data,int8=True))['int8'])
+        with patch.dict('os.environ',{'STUDIO_WAN_INT4':'1'}):
+            self.assertFalse(self.a.valider(dict(self.data,int4=False))['int4'])
+
     def test_random_default_and_fixed_seed(self):
         self.assertIsInstance(self.a.valider(self.data)['seed'],int)
         self.assertEqual(self.a.valider(dict(self.data,seed=17))['seed'],17)
@@ -39,7 +47,7 @@ class PerformanceTests(unittest.TestCase):
         with self.assertRaises(ValueError):self.a.valider(dict(self.data,video='escape.mp4'))
 
     def test_bounds_and_nonfinite(self):
-        for kw in (dict(debut=-1),dict(duree=.5),dict(duree=4),dict(debut=9.5),dict(duree=float('nan')),dict(debut=float('inf')),dict(seed=True),dict(seed=-1),dict(prompt='x'*2001)):
+        for kw in (dict(debut=-1),dict(duree=.5),dict(duree=4),dict(debut=9.5),dict(duree=float('nan')),dict(debut=float('inf')),dict(seed=True),dict(seed=-1),dict(prompt='x'*2001),dict(profil='inconnu'),dict(int4='oui'),dict(int8='oui'),dict(int4=True,int8=True)):
             with self.subTest(kw=kw),self.assertRaises(ValueError):self.a.valider(dict(self.data,**kw))
 
     def test_description_facultative_utilise_la_photo(self):
@@ -63,6 +71,13 @@ class PerformanceTests(unittest.TestCase):
         self.assertEqual(t['params']['seed'],20)
         self.assertEqual(t['modeles']['animation']['id'],'wan-animate2')
         self.assertEqual(t['etat'],'en attente');self.assertEqual(len(self.s.TACHES),1)
+
+    def test_mesure_etape_reelle_reservee_au_diagnostic(self):
+        with patch.object(self.a,'etat',return_value=dict(pret=True)),patch.object(self.a,'modele',return_value=self.root/'weights'),patch('animation.budget',return_value=12*1024**3):
+            t=self.a.demander(dict(self.data,mesurer_etape=True),diagnostic=True)
+            self.assertTrue(t['mesurer_etape']);self.assertTrue(t['diagnostic_run'])
+            normal=self.a.demander(dict(self.data,mesurer_etape=True))
+            self.assertFalse(normal['mesurer_etape'])
 
     def test_budget_reserve_and_pressure(self):
         import memoire
@@ -139,16 +154,17 @@ class TransformerTests(unittest.TestCase):
         except ImportError:self.skipTest('Pinned Wan runtime not installed')
         from lancer_animation import charger_disque
         torch.manual_seed(1)
-        model=WanAnimate2Transformer3DModel(dim=48,ffn_dim=96,freq_dim=8,text_dim=32,text_len=8,num_heads=4,num_layers=1)
+        model=WanAnimate2Transformer3DModel(dim=64,ffn_dim=128,freq_dim=8,text_dim=32,text_len=8,num_heads=4,num_layers=1)
         with tempfile.TemporaryDirectory() as tmp:
             tmp=Path(tmp);model.save_pretrained(tmp/'model');del model
-            model=charger_disque(WanAnimate2Transformer3DModel,tmp/'model',tmp/'offload','mps')
+            model=charger_disque(WanAnimate2Transformer3DModel,tmp/'model',tmp/'offload','mps',mixte=True,int4=True,plafond=4*1024**3)
             k,v={},{};device='mps'
             with torch.no_grad():
                 model([torch.randn(16,2,4,4,device=device)],grid_sizes=torch.tensor([[2,2,2]]),k_cache=k,v_cache=v,
                     clip_fea_ref=torch.randn(1,257,1280,device=device),y_ref=[torch.randn(20,2,4,4,device=device)],
                     context_ref=[torch.randn(8,32,device=device)],seq_len_ref=8,t=torch.ones(1,device=device),method='forward_ref')
                 self.assertEqual(len(k),1);self.assertEqual(len(v),1)
+                self.assertEqual(k[0].dtype,torch.bfloat16);self.assertEqual(v[0].dtype,torch.bfloat16)
                 out=model([torch.randn(16,3,4,4,device=device)],k_cache=k,v_cache=v,clip_fea=torch.randn(1,257,1280,device=device),
                     y=[torch.randn(20,3,4,4,device=device)],context=[torch.randn(8,32,device=device)],seq_len=12,t=torch.ones(1,device=device),
                     grid_sizes_ref=torch.tensor([[2,2,2]]),origin_len=5,origin_area=[32,32],method='forward_gen')
@@ -180,7 +196,7 @@ class TransformerTests(unittest.TestCase):
             video.release()
             for name,module in list(components.items()):
                 module.save_pretrained(tmp/name)
-                components[name]=charger_disque(type(module),tmp/name,tmp/('disk-'+name),'mps')
+                components[name]=charger_disque(type(module),tmp/name,tmp/('disk-'+name),'mps',mixte=True)
             pipe=WanAnimate2Pipeline(**components,tokenizer=tokenizer,scheduler=DPMSolverMultistepScheduler())
             from animation_texte import installer as optimiser_texte
             optimiser_texte(pipe)
