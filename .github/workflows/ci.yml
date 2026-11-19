@@ -30,7 +30,7 @@ jobs:
       - name: Validate browser script syntax
         run: node -e 'const fs = require("fs"); new Function(fs.readFileSync("index.html", "utf8").split("<script>")[1].split("</script>")[0]);'
       - name: Test generation progress parsing
-        run: node test_progression.js && node test_balises.js && node test_voix_lot.js && node test_import_photo.js && node test_modeles.js
+        run: node test_progression.js && node test_balises.js && node test_voix_lot.js && node test_import_photo.js && node test_modeles.js && node test_plateforme.js
       - name: Verify publication boundary
         run: python tools/check_publication.py
   windows-launcher:
@@ -63,4 +63,7 @@ jobs:
         shell: cmd
       - name: Install and verify Windows CPU voice runtime (no model weights)
         run: .\installer.bat --engine omnivoice --device cpu < NUL
+        shell: cmd
+      - name: Install and verify separate Windows Qwen runtime (no weights)
+        run: .\installer.bat --engine qwen-tts --device cpu < NUL
         shell: cmd

@@ -3,13 +3,14 @@ const html=fs.readFileSync('index.html','utf8');
 const code=html.slice(html.indexOf("let MODELES_SIGNATURE="),html.indexOf('async function actionModele('));
 const nodes={};const node=id=>nodes[id]??={textContent:'',innerHTML:'',classList:{contains:()=>false}};
 const model=(id,role,compatible)=>({id,role,compatible,nom:id,ram:0,path:'models/'+id,sources:[],raison_incompatibilite:'Apple Silicon requis',description:'fixture',installe:false,octets:10});
-let data={catalogue:[model('omnivoice','synthese',true),model('ltx23-q4','video',false),model('qwen3-tts-mlx','synthese',false)],plateforme:{os:'Windows',architecture:'AMD64'},dossier:'models'};
+let data={catalogue:[model('omnivoice','synthese',true),model('qwen3-tts-torch','synthese',true),model('ltx23-q4','video',false),model('qwen3-tts-mlx','synthese',false)],plateforme:{os:'Windows',architecture:'AMD64'},dossier:'models'};
 const context=vm.createContext({$:node,E:{taches:[]},esc:s=>String(s),dessinerCreation:()=>{},api:async url=>url==='/api/modeles'?data:{engines:[]}});
 vm.runInContext(code,context);
 (async()=>{
  await context.chargerModeles();
  const rendered=node('modeles-grille').innerHTML;
  assert.match(rendered,/actionModele\('analyser','omnivoice'\)/);
+ assert.match(rendered,/actionModele\('analyser','qwen3-tts-torch'\)/);
  assert.doesNotMatch(rendered,/actionModele\('analyser','ltx23-q4'\)/);
  assert.doesNotMatch(rendered,/actionModele\('analyser','qwen3-tts-mlx'\)/);
  assert.match(rendered,/Modèles indisponibles/);

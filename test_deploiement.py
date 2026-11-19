@@ -26,6 +26,9 @@ class SelectionTest(unittest.TestCase):
         result = installer.plan(self.host(vram=4096))
         self.assertTrue(result['supported'])
         self.assertEqual((result['engine'], result['device']), ('omnivoice', 'cpu'))
+        self.assertEqual(result['additional_engines'],['qwen-tts'])
+        self.assertEqual(installer.plan(self.host(vram=4096),'qwen-tts')['environment'],'.venv-qwen')
+        self.assertEqual(installer.plan(self.host(vram=4096),'qwen-tts')['device'],'cpu')
 
     def test_cuda_requires_memory_and_driver(self):
         self.assertEqual(installer.plan(self.host(vram=8192))['device'], 'cuda')

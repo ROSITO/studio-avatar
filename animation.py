@@ -7,6 +7,7 @@ import secrets
 import shutil
 import time
 import uuid
+import modeles as catalogue_modeles
 
 PROMPT_DEFAUT = 'Preserve the character identity, appearance, clothing, background and lighting from the reference image. Animate the character following the movements and expressions of the driving video.'
 
@@ -47,6 +48,7 @@ class Atelier:
 
     def etat(self):
         e = self.s.GESTION_MODELES.entry(MODEL_ID)
+        compat=catalogue_modeles.compatibilite(e)
         path = self.modele()
         try:
             marker=json.loads((self.runtime().parent.parent/'.studio-animation-runtime.json').read_text())
@@ -60,8 +62,8 @@ class Atelier:
             try:budget()
             except ValueError as exc:memory_error=str(exc)
         return dict(modele=MODEL_ID, installe=installed, runtime=runtime, experimental=True,
-                    pret=runtime and installed and not memory_error, limite_secondes=3, budget_go=round(plafond()/1024**3,1),
-                    raison=memory_error or ('Prêt pour un essai expérimental de 1 à 3 secondes.' if runtime and installed else
+                    pret=compat['compatible'] and runtime and installed and not memory_error, limite_secondes=3, budget_go=round(plafond()/1024**3,1),
+                    compatible=compat['compatible'],raison=compat['raison_incompatibilite'] or memory_error or ('Prêt pour un essai expérimental de 1 à 3 secondes.' if runtime and installed else
                     'Téléchargement en cours : progression dans Modèles.' if downloading else
                     'Installez les poids dans Modèles.' if runtime else 'Installez le moteur avec python3 installer_animation.py.'),
                     capacites=['transfert_performance'],
@@ -110,7 +112,7 @@ class Atelier:
         params = self.valider(d)
         if not isinstance(d.get('mesurer_etape',False),bool):raise ValueError('Le diagnostic doit être activé ou désactivé.')
         status=self.etat()
-        if not status['pret'] and not (diagnostic and status['runtime'] and status['installe']): raise ValueError(status['raison'])
+        if not status['pret'] and not (diagnostic and status.get('compatible',True) and status['runtime'] and status['installe']): raise ValueError(status['raison'])
         cap=budget(diagnostic=diagnostic and not d.get('mesurer_etape'))
         if params['backend']=='mlx' and cap<16*1024**3:raise ValueError('MLX résident : budget borné de 16 Gio requis.')
         # Admission is checked again when the queue reaches this job.

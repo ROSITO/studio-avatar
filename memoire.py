@@ -7,7 +7,7 @@ import subprocess
 import threading
 
 GIB=1024**3
-BESOINS={'omnivoice':8*GIB,'qwen3-tts-mlx':8*GIB,'qwen3-tts-17b-mlx':8*GIB,'drama3-mlx':28*GIB}
+BESOINS={'qwen3-tts-torch':8*GIB,'qwen3-tts-17b-torch':12*GIB,'omnivoice':8*GIB,'qwen3-tts-mlx':8*GIB,'qwen3-tts-17b-mlx':8*GIB,'drama3-mlx':28*GIB}
 
 def reserve_systeme():
     valeur=float(os.environ.get('STUDIO_TTS_SYSTEM_RESERVE_GB','4'))

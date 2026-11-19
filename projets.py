@@ -141,6 +141,8 @@ def ajouter_tache(p,genre,e=None):
 def lancer(pid,d):
     with VERROU:
         p=lire(pid); action=d['action']
+        if action in ('automatique','manquants','clip','pont'):S.GESTION_MODELES.verifier_role('video')
+        if action=='export' and moteur(p)!='a2v':S.GESTION_MODELES.verifier_role('lipsync')
         if action=='automatique':
             if actif(pid): return p
             if not p['audio_source'] and (not p.get('voix') or any(not b['texte'].strip() for b in p['blocs'])): raise ValueError('Complétez le texte de tous les blocs et choisissez une voix avant le lancement automatique.')

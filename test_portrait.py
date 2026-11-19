@@ -45,6 +45,6 @@ class PortraitTest(unittest.TestCase):
         m = modeles.Gestionnaire(s); entree = m.entry('flux2-klein4b')
         self.assertFalse(m.selection()['image']['installe'])
         for f in entree['required']: (ailleurs / f).parent.mkdir(parents=True, exist_ok=True); (ailleurs / f).write_bytes(b'x')
-        self.assertEqual(m.selection()['image'], dict(id='flux2-klein4b', path=str(ailleurs), installe=True, compatible=True, raison_incompatibilite=''))
+        self.assertEqual(m.selection()['image'], dict(id='flux2-klein4b', path=str(ailleurs), installe=True, compatible=True, raison_incompatibilite='',backend='mflux',appareil='mps'))
 
 if __name__ == '__main__': unittest.main()

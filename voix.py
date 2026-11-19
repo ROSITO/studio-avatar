@@ -15,10 +15,11 @@ import urllib.request
 import urllib.parse
 import uuid
 import drama_segments
+import modeles as catalogue_modeles
 
 ErreurValidation = drama_segments.Validation
 
-ENGINES = ('omnivoice', 'qwen3-tts-mlx', 'qwen3-tts-17b-mlx', 'drama3-mlx')
+ENGINES = ('qwen3-tts-torch', 'qwen3-tts-17b-torch', 'omnivoice', 'qwen3-tts-mlx', 'qwen3-tts-17b-mlx', 'drama3-mlx')
 
 class Atelier:
     def __init__(self, studio):
@@ -27,6 +28,8 @@ class Atelier:
         self.path=self.root/'profils.json'
         self.python=Path(os.environ.get('STUDIO_TTS_PYTHON',str(studio.ICI/'.venv-voix'/('Scripts/python.exe' if os.name=='nt' else 'bin/python')))).expanduser()
     def interpreteur(self,mid):
+        if mid.endswith('-torch'):
+            return Path(os.environ.get('STUDIO_QWEN_PYTHON',str(self.s.ICI/'.venv-qwen'/('Scripts/python.exe' if os.name=='nt' else 'bin/python')))).expanduser()
         if mid!='omnivoice':return self.python
         return Path(os.environ.get('STUDIO_OMNIVOICE_PYTHON',str(self.s.ICI/'.venv-omnivoice'/('Scripts/python.exe' if os.name=='nt' else 'bin/python')))).expanduser()
     def lire(self):
@@ -36,16 +39,15 @@ class Atelier:
         tmp=self.path.with_suffix('.tmp');tmp.write_text(json.dumps(profils,ensure_ascii=False,indent=2));tmp.replace(self.path)
     def catalogue(self):
         g=self.s.GESTION_MODELES; moteur=g.config['selection'].get('synthese','qwen3-tts-mlx')
-        compatible=platform.system()=='Darwin' and platform.machine()=='arm64'
         engines=[]
         for mid in ENGINES:
             e=g.entry(mid);p=g.path(e);present=g.valid(e,p)
-            support=compatible or mid=='omnivoice';runtime=self.interpreteur(mid).is_file()
+            support=catalogue_modeles.compatibilite(e)['compatible'];runtime=self.interpreteur(mid).is_file()
             try:
                 memoire.verifier(mid);memoire_ok=True;raison_memoire=''
             except ValueError as exc:memoire_ok=False;raison_memoire=str(exc)
             engines.append(dict(id=mid,display_name=e['nom'],available=support and runtime and present and memoire_ok,
-                reason=raison_memoire if not memoire_ok else '' if support and runtime and present else 'Apple Silicon requis' if not support else 'Installez le runtime '+('.venv-omnivoice' if mid=='omnivoice' else '.venv-voix') if not runtime else 'Téléchargez les poids dans Modèles',supports_cloning=True,supports_voice_design=False,supports_inline_tags=mid=='drama3-mlx'))
+                reason=raison_memoire if not memoire_ok else '' if support and runtime and present else catalogue_modeles.compatibilite(e)['raison_incompatibilite'] if not support else 'Installez le runtime '+('.venv-qwen' if mid.endswith('-torch') else '.venv-omnivoice' if mid=='omnivoice' else '.venv-voix') if not runtime else 'Téléchargez les poids dans Modèles',supports_cloning=True,supports_voice_design=False,supports_inline_tags=mid=='drama3-mlx'))
         return dict(ok=True,actif=moteur,engines=engines)
     def liste(self):
         c=self.catalogue();pret=next(e['available'] for e in c['engines'] if e['id']==c['actif'])
@@ -128,7 +130,7 @@ class Atelier:
         req.write_text(json.dumps(dict(texte=texte,moteur=choix['id'],modele=choix['path'],reference=str(self.s.ICI/'references'/profil['reference']),transcription=profil['texte'],langue=langue,seed=int(seed),sortie=str(brut),optimiser=t.get('params',{}).get('optimiser',True),mesurer_contexte=t.get('type')=='voix_mesure'),ensure_ascii=False))
         try:
             t['etape']='Synthèse vocale locale · '+g.entry(choix['id'])['nom'];self.s.sauver()
-            self.s.lancer(t,[python,'-u',self.s.ICI/('lancer_omnivoice.py' if choix['id']=='omnivoice' else 'lancer_voix.py'),req],env={'STUDIO_TTS_EFFECTIVE_LIMIT':str(plafond),'HF_HUB_OFFLINE':'1','TRANSFORMERS_OFFLINE':'1','HF_HOME':str(self.s.MODELES/'huggingface')})
+            self.s.lancer(t,[python,'-u',self.s.ICI/('lancer_qwen.py' if choix['id'].endswith('-torch') else 'lancer_omnivoice.py' if choix['id']=='omnivoice' else 'lancer_voix.py'),req],env={'STUDIO_TTS_EFFECTIVE_LIMIT':str(plafond),'HF_HUB_OFFLINE':'1','TRANSFORMERS_OFFLINE':'1','HF_HOME':str(self.s.MODELES/'huggingface')})
             if t.get('type')=='voix_mesure':
                 t['resultat']=dict(mesure=json.loads(brut.with_suffix('.json').read_text()));return
             if not brut.is_file() or brut.stat().st_size<44:raise RuntimeError('Le moteur vocal n’a produit aucun audio. Consultez le journal.')

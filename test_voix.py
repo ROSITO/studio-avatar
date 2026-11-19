@@ -103,6 +103,20 @@ class VoixIntegreesTest(unittest.TestCase):
         with patch.object(self.atelier,'interpreteur',return_value=python),patch.object(studio,'lancer',side_effect=lancer),patch('urllib.request.urlopen',side_effect=AssertionError('No VoiceStudio synthesis')):
             self.atelier.generer(t,'Essai',self.profil['id'],'fr',studio.ICI/'audios'/'omni.wav')
         self.assertTrue((studio.ICI/'audios'/'omni.wav').exists())
+    def test_qwen_native_utilise_un_worker_et_runtime_separes(self):
+        profils=self.atelier.lire();profils[0]['moteur_origine']='qwen3-tts-torch';self.atelier.sauver(profils)
+        python=self.fixture.root/'python-qwen';python.touch()
+        t=dict(id='abcdef123456',modeles=dict(synthese=dict(id='qwen3-tts-torch',path='local',installe=True)))
+        def lancer(t,cmd,env=None):
+            if cmd[0]==python:
+                self.assertEqual(Path(cmd[2]).name,'lancer_qwen.py')
+                self.assertEqual(env['HF_HUB_OFFLINE'],'1')
+                d=json.loads(Path(cmd[-1]).read_text());self.assertEqual(d['moteur'],'qwen3-tts-torch')
+                subprocess.run(['ffmpeg','-v','error','-y','-i',studio.ICI/'references'/'ref.wav',d['sortie']],check=True)
+            else:subprocess.run(list(map(str,cmd)),check=True)
+        with patch.object(self.atelier,'interpreteur',return_value=python),patch.object(studio,'lancer',side_effect=lancer):
+            self.atelier.generer(t,'Essai',self.profil['id'],'fr',studio.ICI/'audios'/'qwen.wav')
+        self.assertTrue((studio.ICI/'audios'/'qwen.wav').exists())
     def test_changer_de_moteur_ne_change_pas_silencieusement_identite(self):
         profils=self.atelier.lire();profils[0]['moteur_origine']='omnivoice';self.atelier.sauver(profils)
         t=dict(id='abcdef123456',modeles=dict(synthese=dict(id='qwen3-tts-mlx',path='local',installe=True)))

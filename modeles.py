@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import platform
+import plateforme
 from pathlib import Path, PurePosixPath
 import shutil
 import threading
@@ -49,17 +50,32 @@ CATALOGUE += [dict(id='wan-animate2', nom='Wan-Animate-2 · transfert de perform
     sources=[dict(repo='Wan-AI/Wan2.2-Animate-2-14B-Diffusers',
                   include=['*.json','*.safetensors','*.model','*.txt','LICENSE*','NOTICE*'], prefix='')])]
 
+# Native PyTorch checkpoints, kept separate from MLX weight conversions.
+CATALOGUE += [dict(id=mid, nom=nom, role='synthese', ram=ram, backend='qwen-torch',
+    description='Clonage Qwen-TTS officiel PyTorch · Windows/Linux x64 · CPU ou NVIDIA · Apache 2.0.',
+    required=['config.json','model.safetensors','tokenizer_config.json','vocab.json','merges.txt',
+              'speech_tokenizer/config.json','speech_tokenizer/model.safetensors',
+              'speech_tokenizer/preprocessor_config.json'],
+    sources=[dict(repo=repo, include=['*.json','*.safetensors','*.txt','LICENSE*'],prefix='')])
+    for mid,nom,repo,ram in [
+        ('qwen3-tts-torch','Qwen3-TTS 0.6B · PyTorch','Qwen/Qwen3-TTS-12Hz-0.6B-Base',8),
+        ('qwen3-tts-17b-torch','Qwen3-TTS 1.7B · PyTorch','Qwen/Qwen3-TTS-12Hz-1.7B-Base',16)]]
+
+
+def backend(e):
+    if e.get('backend'):return e['backend']
+    if e['id']=='omnivoice':return 'omnivoice-torch'
+    return {'video':'ltx-mlx','texte':'ltx-mlx','synthese':'mlx-audio',
+            'image':'mflux','animation':'wan-mps','lipsync':'musetalk-mps'}[e['role']]
+
+
 def compatibilite(e):
-    """Compatibility of this studio's integration, not of upstream weight formats."""
-    systeme, architecture = platform.system(), platform.machine().lower()
-    apple = systeme == 'Darwin' and architecture == 'arm64'
-    if e['id'] == 'omnivoice':
-        compatible = apple or (systeme in ('Windows', 'Linux') and architecture in ('amd64', 'x86_64'))
-        raison = '' if compatible else 'Le moteur OmniVoice intégré requiert Windows/Linux x64 ou macOS Apple Silicon.'
-    else:
-        compatible = apple
-        raison = '' if compatible else 'Le moteur intégré pour ce modèle nécessite macOS Apple Silicon ; aucun moteur compatible n’est fourni pour cette machine.'
-    return dict(compatible=compatible, raison_incompatibilite=raison)
+    host=plateforme.detecter(); moteur=backend(e)
+    compatible=plateforme.backend_compatible(moteur,host)
+    raison='' if compatible else ('Le moteur Qwen PyTorch intégré est prévu pour Windows/Linux x64.' if moteur=='qwen-torch' else
+        'Le moteur intégré pour ce modèle nécessite macOS Apple Silicon ; aucun moteur compatible n’est fourni pour cette machine.')
+    return dict(compatible=compatible,raison_incompatibilite=raison,backend=moteur,
+                appareil=plateforme.appareil_torch(host) if moteur in ('qwen-torch','omnivoice-torch') else 'mps' if compatible else None)
 
 
 class SansFuiteToken(urllib.request.HTTPRedirectHandler):
@@ -153,7 +169,18 @@ class Gestionnaire:
             for e in self.entries():
                 p=self.path(e); plan=self.plans.get(e['id'])
                 entries.append(dict(id=e['id'],nom=e['nom'],role=e['role'],ram=e['ram'],description=e['description'],path=str(p),installe=self.valid(e,p),actif=self.config['selection'].get(e['role'])==e['id'],octets=plan.get('total') if plan else None,sources=[s['repo'] for s in e.get('sources',[])],local=bool(e.get('path')),**compatibilite(e)))
-            return dict(plateforme=dict(os=platform.system(),architecture=platform.machine()),catalogue=entries,selection=self.selection(),transfert=self.etat,voix_url=self.s.VOICESTUDIO,moteurs=dict(ltx=bool(shutil.which(str(self.s.LTX))),musetalk=self.muse_root.is_dir(),mflux=bool(getattr(self.s,'MFLUX',None) and (self.s.MFLUX/'mflux-generate-flux2').is_file())),dossier=str(self.s.MODELES))
+            return dict(plateforme={**plateforme.detecter(),'architecture':platform.machine()},catalogue=entries,selection=self.selection(),capacites=self.capacites(),transfert=self.etat,voix_url=self.s.VOICESTUDIO,moteurs=dict(ltx=bool(shutil.which(str(self.s.LTX))),musetalk=self.muse_root.is_dir(),mflux=bool(getattr(self.s,'MFLUX',None) and (self.s.MFLUX/'mflux-generate-flux2').is_file())),dossier=str(self.s.MODELES))
+    def capacites(self):
+        result={}
+        for role in ('video','image','synthese','animation','lipsync'):
+            entries=[e for e in self.entries() if e['role']==role]
+            possibles=[e['id'] for e in entries if compatibilite(e)['compatible']]
+            result[role]=dict(compatible=bool(possibles),modeles=possibles,
+                raison='' if possibles else compatibilite(entries[0])['raison_incompatibilite'])
+        return result
+    def verifier_role(self,role):
+        capacite=self.capacites()[role]
+        if not capacite['compatible']:raise ValueError(capacite['raison'])
     def voix_catalogue(self):
         return self.s.ATELIER_VOIX.catalogue()
     def choisir_voix(self,mid):

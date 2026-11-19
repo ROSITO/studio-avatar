@@ -8,26 +8,17 @@ import shutil
 import subprocess
 import sys
 import venv
+import plateforme
 
 ROOT = Path(__file__).resolve().parent
 
 
 def machine():
-    gpu = []
-    if shutil.which('nvidia-smi'):
-        try:
-            lines = subprocess.check_output(['nvidia-smi', '--query-gpu=name,memory.total,driver_version',
-                '--format=csv,noheader,nounits'], text=True, timeout=10).splitlines()
-            for line in lines:
-                name, memory, driver = [part.strip() for part in line.rsplit(',', 2)]
-                gpu.append(dict(name=name, vram_mib=int(memory), driver=driver))
-        except (OSError, ValueError, subprocess.SubprocessError):
-            pass
-    import memoire
-    return dict(os=platform.system(), arch=platform.machine().lower(), ram_gib=round(memoire.physique()/memoire.GIB, 1), nvidia=gpu)
+    return plateforme.detecter()
 
 
 def plan(host, engine='auto', device='auto'):
+    automatique = engine == 'auto'
     apple = host['os'] == 'Darwin' and host['arch'] == 'arm64'
     if engine == 'auto':
         engine = 'mlx' if apple else 'omnivoice'
@@ -45,20 +36,23 @@ def plan(host, engine='auto', device='auto'):
         result.update(supported=False, reason='OmniVoice: architecture non validee par cet installateur.')
         return result
     # CUDA 12.8 needs a recent NVIDIA driver; leave low-VRAM laptops on CPU.
-    cuda = any(g['vram_mib'] >= 8192 and int(g['driver'].split('.')[0]) >= 570 for g in host['nvidia'])
+    cuda = plateforme.appareil_torch(host) == 'cuda'
     chosen = ('mps' if apple else 'cuda' if cuda else 'cpu') if device == 'auto' else device
     if (chosen == 'cuda' and not cuda) or (chosen == 'mps' and not apple):
         result.update(supported=False, reason='Backend GPU non admissible (CUDA: pilote 570+ et au moins 8 Gio VRAM requis par cette recette).')
         return result
     result['device'] = chosen
-    result['environment'] = '.venv-omnivoice'
+    if engine=='qwen-tts' and apple:
+        result.update(supported=False,reason='Sur Apple Silicon, utilisez le moteur Qwen MLX.');return result
+    result['environment'] = '.venv-qwen' if engine=='qwen-tts' else '.venv-omnivoice'
+    if automatique and not apple:result['additional_engines']=['qwen-tts']
     result['note'] = 'CPU: synthese potentiellement lente; aucune garantie de rendu video.' if chosen == 'cpu' else 'Backend a verifier apres installation.'
     return result
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--engine', choices=('auto', 'interface', 'mlx', 'omnivoice', 'animation'), default='auto')
+    parser.add_argument('--engine', choices=('auto', 'interface', 'mlx', 'omnivoice', 'qwen-tts', 'animation'), default='auto')
     parser.add_argument('--device', choices=('auto', 'cpu', 'cuda', 'mps'), default='auto')
     parser.add_argument('--plan', action='store_true', help='Detecter sans installer')
     args = parser.parse_args()
@@ -77,20 +71,20 @@ def main():
     if engine == 'interface':
         print('Interface prete : lancer.bat (Windows) ou python3 lancer.py.')
         return 0
-    if engine == 'omnivoice' and sys.version_info[:2] not in ((3, 12), (3, 13)):
-        raise SystemExit('OmniVoice: lancez cet installateur avec Python 3.12 ou 3.13 (Windows: py -3.12 installer.py).')
+    if engine in ('omnivoice','qwen-tts') and sys.version_info[:2] not in ((3, 12), (3, 13)):
+        raise SystemExit('Les moteurs PyTorch utilisent Python 3.12 ou 3.13 ; lancez installer.bat sous Windows.')
     if engine in ('mlx', 'animation'):
         subprocess.run([sys.executable, str(ROOT / ('installer_voix.py' if engine == 'mlx' else 'installer_animation.py'))], check=True)
         return 0
-    target = ROOT / '.venv-omnivoice'
+    target = ROOT / choice['environment']
     marker = target / '.studio-installation.json'
     owner = target / '.studio-managed.json'
     if target.exists() and not marker.exists() and not owner.exists():
-        raise SystemExit('Runtime existant sans manifeste: conservez-le ou renommez .venv-omnivoice avant une installation propre.')
+        raise SystemExit(f'Runtime existant sans manifeste: conservez ou renommez {target.name} avant une installation propre.')
     if owner.exists() and json.loads(owner.read_text(encoding='utf-8')).get('device') != choice['device']:
-        raise SystemExit('Installation incomplete avec un autre backend : renommez .venv-omnivoice pour le conserver puis relancez.')
+        raise SystemExit(f'Installation incomplete avec un autre backend : renommez {target.name} pour le conserver puis relancez.')
     if marker.exists() and json.loads(marker.read_text(encoding='utf-8')).get('device') != choice['device']:
-        raise SystemExit('Backend different du runtime existant: renommez .venv-omnivoice pour le conserver puis relancez.')
+        raise SystemExit(f'Backend different du runtime existant: renommez {target.name} pour le conserver puis relancez.')
     target.mkdir(exist_ok=True)
     owner.write_text(json.dumps(dict(engine=engine, device=choice['device'])), encoding='utf-8')
     venv.EnvBuilder(with_pip=True).create(target)
@@ -101,14 +95,16 @@ def main():
     # On failure the directory is retained for diagnostics, but has no success marker.
     marker.unlink(missing_ok=True)
     subprocess.run(base + ['torch==2.8.0', 'torchaudio==2.8.0'] + torch_args, check=True)
-    subprocess.run(base + ['-r', str(ROOT / 'requirements-omnivoice.txt')], check=True)
+    subprocess.run(base + ['-r', str(ROOT / ('requirements-qwen.txt' if engine=='qwen-tts' else 'requirements-omnivoice.txt'))], check=True)
     subprocess.run([str(python), '-m', 'pip', 'check'], check=True)
-    probe = "import torch, omnivoice, soundfile; device=" + repr(choice['device']) + "; assert device == 'cpu' or (torch.cuda.is_available() if device == 'cuda' else torch.backends.mps.is_available()); print('Runtime OK:', device)"
+    probe = "import torch, " + ("qwen_tts" if engine=="qwen-tts" else "omnivoice") + ", soundfile; device=" + repr(choice['device']) + "; assert device == 'cpu' or (torch.cuda.is_available() if device == 'cuda' else torch.backends.mps.is_available()); print('Runtime OK:', device)"
     subprocess.run([str(python), '-c', probe], check=True)
     with (target / 'requirements-installed.txt').open('w', encoding='utf-8') as installed:
         subprocess.run([str(python), '-m', 'pip', 'freeze'], stdout=installed, check=True)
     marker.write_text(json.dumps(dict(engine=engine, device=choice['device'], python=platform.python_version()), indent=2), encoding='utf-8')
-    print('Runtime installe et verifie. Telechargez ensuite les poids OmniVoice depuis Modeles. Aucune voix personnelle incluse.')
+    for additional in choice.get('additional_engines',[]):
+        subprocess.run([sys.executable,str(ROOT/'installer.py'),'--engine',additional,'--device',choice['device']],check=True)
+    print('Runtimes installes et verifies. Telechargez ensuite les poids compatibles depuis Modeles.')
     return 0
 
 

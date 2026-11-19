@@ -217,6 +217,7 @@ pre { background:#080c11; }
 <!-- ================= NOUVELLE VIDÉO ================= -->
 <div class="page actif" id="p-nouvelle">
   <header class="hero"><div class="eyebrow">De l’idée à la vidéo</div><h2>Donnez un visage<br><span>à vos idées.</span></h2><p class="intro">Un avatar, votre voix, votre histoire. Créez une vidéo qui vous ressemble, en trois étapes.</p><div class="hero-foot"><span>Exécution locale</span><span>Avatars personnalisés</span><span>Sans abonnement</span></div></header>
+  <p id="plateforme-info" class="info" role="status" hidden></p>
   <div class="etapes"><div id="e1"><b>1</b>Avatar</div><div id="e2"><b>2</b>Ce qu'il dit</div><div id="e3"><b>3</b>Créer le projet</div></div>
 
   <div class="etape actif" id="etape-1">
@@ -545,7 +546,7 @@ function recap() {
     <dt>Ce qu'il dit</dt><dd>${quoi}</dd>
     <dt>Voix</dt><dd>${esc(voix)}</dd>
     <dt>Durée</dt><dd>environ ${minsec(d)}</dd>
-    <dt>Estimation initiale</dt><dd>environ ${minsec(calcul)} <span class="mut">(sur ce Mac, gratuit)</span>${attente ? `<br><span style="color:var(--acc)">+ ≈ ${minsec(attente)} : la préparation de l'avatar se termine d'abord.</span>` : ''}</dd></dl>`;
+    <dt>Estimation initiale</dt><dd>environ ${minsec(calcul)} <span class="mut">(indicatif, selon le moteur et la machine)</span>${attente ? `<br><span style="color:var(--acc)">+ ≈ ${minsec(attente)} : la préparation de l'avatar se termine d'abord.</span>` : ''}</dd></dl>`;
   if (!$('nom').value) $('nom').value = tige(CH.avatar) + '-' + new Date().toISOString().slice(5, 16).replace(/\D/g, '');
 }
 async function generer() {
@@ -661,8 +662,8 @@ function ficheAvatar() {
       <div class="depot" style="aspect-ratio:auto;min-height:120px" onclick="variante('repos')"><div><div class="plus">＋</div>Ajouter un repos<br><span style="font-size:12px">≈ 7 min</span></div></div></div></div>
     ${autres.length ? `<div class="situ"><h4>Autres mouvements <span class="mut" style="font-weight:400;font-size:13px">· non utilisés tant qu'ils n'ont pas de transition ou de situation</span></h4><div class="grille">${autres.map(c => carte(c.nom, true)).join('')}</div></div>` : ''}</div>`;
 }
-function variante(t) { api('/api/tache', { type: 'variante', params: { avatar: FICHE, ton: t } }).then(() => rafraichir(true)); }
-function creerMouvements(src) { api('/api/tache', { type: 'avatar', params: { source: src } }).then(() => rafraichir(true)); }
+function variante(t) { if(!verifierRole('video'))return; api('/api/tache', { type: 'variante', params: { avatar: FICHE, ton: t } }).then(() => rafraichir(true)); }
+function creerMouvements(src) { if(!verifierRole('video'))return; api('/api/tache', { type: 'avatar', params: { source: src } }).then(() => rafraichir(true)); }
 async function supprimerAvatar(src) { if (confirm(`Supprimer l'avatar ${tige(src)}, avec sa photo et ses mouvements ?`)) { await api('/api/supprimer_avatar', { nom: src }); FICHE = null; if (CH.avatar === src) CH.avatar = null; rafraichir(true); } }
 function pont(c) {
   const long = confirm(`Transition pour ${tige(c)}\n\nOK : longue (2,7 s), si le geste finit loin de la pose de départ (mains levées…).\nAnnuler : courte (1,4 s).`);
@@ -673,6 +674,7 @@ async function annuler(id) { if (confirm('Annuler cette tâche ?')) { await api(
 
 // ---------------- mode avancé ----------------
 function clip() {
+  if(!verifierRole('video'))return;
   if (!$('c-source').value || !$('c-geste').value.trim()) return alert('Choisis un avatar et décris le geste.');
   api('/api/tache', { type: 'clip', params: { source: $('c-source').value, geste: $('c-geste').value.trim(), images: +$('c-images').value, seed: $('c-seed-mode').value==='manuel' ? +$('c-seed').value : crypto.getRandomValues(new Uint32Array(1))[0] % 2147483648,
     nom: $('c-nom').value || tige($('c-source').value) + '-geste-' + $('c-seed').value, base: $('c-base').value.trim() } }).then(() => rafraichir(true));
@@ -702,7 +704,22 @@ function options(sel, liste, vide) {
   sel.innerHTML = (vide != null ? `<option value="">${vide}</option>` : '') + liste.map(([val, txt]) => `<option value="${esc(val)}">${esc(txt)}</option>`).join('');
   if ([...sel.options].some(o => o.value === v)) sel.value = v;
 }
+// BEGIN PLATFORM UI
+function roleDisponible(role) { return E.capacites?.[role]?.compatible!==false; }
+function verifierRole(role) {
+  if(roleDisponible(role))return true;
+  alert(E.capacites[role].raison);return false;
+}
+function afficherPlateforme() {
+  const host=E.plateforme, node=$('plateforme-info');
+  if(!host||!node)return;
+  node.hidden=false;
+  node.textContent=`Machine détectée : ${host.os} · ${host.arch} · ${host.ram_gib} Go RAM. `+
+    (roleDisponible('video')?'Moteur vidéo compatible avec ce système.':'Aucun moteur de génération vidéo intégré pour ce système. Les photos, voix et médias existants restent accessibles.');
+}
+// END PLATFORM UI
 function dessiner() {
+  afficherPlateforme();
   const S = E.fichiers.sources || [];
   if (CH.avatar && !S.some(s => s.nom === CH.avatar)) CH.avatar = null;
   $('sys-vs').innerHTML = `Voix intégrées : <b class="${VOIX.ok ? 'ok' : 'err'}">${VOIX.ok ? 'prête' : 'à configurer'}</b>`;
@@ -859,6 +876,7 @@ async function enregistrerElement() {
 }
 async function genererElement(action) { if(await enregistrerElement()) await lancerProjet(action,ELEMENT); }
 async function lancerProjet(action,element) {
+  if(['automatique','manquants','clip','pont'].includes(action)&&!verifierRole('video'))return;
   if(TL_DIRTY && !await enregistrerElement()) return;
   await requeteProjet('/api/projets/lancer',{action,element});
 }
@@ -1026,13 +1044,13 @@ async function chargerModeles(voix=false) {
     if(voix || !VOIX_MODELES) VOIX_MODELES=await api('/api/modeles/voix');
     const signature=JSON.stringify([data,VOIX_MODELES]); if($('p-creer').classList.contains('actif'))dessinerCreation(); if(signature===MODELES_SIGNATURE)return; MODELES_SIGNATURE=signature;
     const transfert=data.transfert||{}, actif=['analyse','telechargement','verification'].includes(transfert.statut), calcul=E.taches.some(t=>['en attente','en cours'].includes(t.etat));
-    $('modeles-emplacement').textContent=(data.plateforme ? data.plateforme.os+' · '+data.plateforme.architecture+' — ' : '')+'Stockage : '+data.dossier;
+    $('modeles-emplacement').textContent=(data.plateforme ? data.plateforme.os+' · '+data.plateforme.architecture+(data.plateforme.ram_gib?' · '+data.plateforme.ram_gib+' Go RAM':'')+(data.plateforme.nvidia?.length?' · '+data.plateforme.nvidia.map(g=>g.name+' ('+(g.vram_mib/1024).toFixed(1)+' Go VRAM)').join(', '):'')+' — ' : '')+'Stockage : '+data.dossier;
     $('modeles-calcul').textContent=calcul?'Une génération est en cours : les téléchargements et changements de modèle seront disponibles à sa fin. Vous pouvez consulter le catalogue et vérifier les tailles.':'';
     $('modeles-transfert').innerHTML=transfert.id && !['taille_disponible','installe'].includes(transfert.statut)?`<div class="encadre"><strong>${esc(({analyse:'Analyse du dépôt',telechargement:'Téléchargement',verification:'Vérification des fichiers',installe:'Installation terminée',interrompu:'Interrompu · reprise disponible',erreur:'Échec · reprise disponible',taille_disponible:'Taille vérifiée'})[transfert.statut] || transfert.statut)}</strong> · ${esc(transfert.id)}${transfert.total && ['telechargement','verification','interrompu'].includes(transfert.statut)?`<div class="barre"><div style="width:${Math.min(100,100*(transfert.recu||0)/transfert.total)}%"></div></div><small>${formatOctets(transfert.recu||0)} / ${formatOctets(transfert.total)}</small>`:''}<p class="mut">${esc(transfert.fichier||'')}</p>${transfert.erreur?`<p class="tl-error">${esc(transfert.erreur)}</p>`:''}${actif?'<button class="sec petit" onclick="actionModele(\'annuler\')">Annuler le transfert</button>':''}</div>`:'';
-    $('modeles-grille').innerHTML=['video','texte','lipsync','image','synthese','animation'].filter(role=>data.catalogue.some(m=>m.role===role && m.compatible!==false)).map(role=>`<section class="modeles-groupe"><h3>${({video:'Génération vidéo',texte:'Encodeur de texte LTX',lipsync:'Synchronisation labiale',synthese:'Synthèse vocale intégrée',animation:'Transfert de performance · expérimental',image:'Création d’avatar (FLUX)'})[role]}</h3><div class="modeles-cartes">${data.catalogue.filter(m=>m.role===role && m.compatible!==false).map(m=>`<article class="modele-carte ${m.actif?'selectionne':''}"><div class="modele-entete"><strong>${esc(m.nom)}</strong><span class="etiq ${m.installe?'mvt':'prep'}">${m.actif?'Sélectionné · ':''}${m.installe?'Installé':'Non installé'}</span></div><p class="mut">${esc(m.description)}</p>${m.ram?`<p class="mut">Mémoire conseillée : ${m.ram} Go ou plus (indicatif).</p>`:''}<p><b>${formatOctets(m.octets)}</b>${role==='video'?' + encodeur Gemma partagé':''}</p><details><summary>Sources et emplacement</summary><p class="modele-chemin">${esc(m.path)}</p>${m.sources.map(repo=>`<a href="https://huggingface.co/${repo}" target="_blank" rel="noopener noreferrer">${esc(repo)}</a><br>`).join('')}</details><div class="tl-actions">${m.installe?`<button class="petit" ${m.actif||calcul?'disabled':''} onclick="actionModele('choisir','${m.id}')">${m.actif?'Utilisé pour les prochaines tâches':'Utiliser ce modèle'}</button>`:''}${!m.local?`<button class="sec petit" ${actif?'disabled':''} onclick="actionModele('analyser','${m.id}')">Vérifier la taille</button>${m.octets!=null?`<button class="${m.installe?'sec ':''}petit" ${actif||calcul?'disabled':''} onclick="actionModele('telecharger','${m.id}')">${m.installe?'Vérifier / réparer':'Télécharger / reprendre'}</button>`:''}`:''}</div></article>`).join('')}</div></section>`).join('');
+    $('modeles-grille').innerHTML=['video','texte','lipsync','image','synthese','animation'].filter(role=>data.catalogue.some(m=>m.role===role && m.compatible!==false)).map(role=>`<section class="modeles-groupe"><h3>${({video:'Génération vidéo',texte:'Encodeur de texte LTX',lipsync:'Synchronisation labiale',synthese:'Synthèse vocale intégrée',animation:'Transfert de performance · expérimental',image:'Création d’avatar (FLUX)'})[role]}</h3><div class="modeles-cartes">${data.catalogue.filter(m=>m.role===role && m.compatible!==false).map(m=>`<article class="modele-carte ${m.actif?'selectionne':''}"><div class="modele-entete"><strong>${esc(m.nom)}</strong><span class="etiq ${m.installe?'mvt':'prep'}">${m.actif?'Sélectionné · ':''}${m.installe?'Installé':'Non installé'}</span></div><p class="mut">${esc(m.description)}</p>${m.backend?`<p class="mut">Moteur : ${esc(m.backend)}${m.appareil?' · '+esc(m.appareil):''}</p>`:''}${m.ram?`<p class="mut">Mémoire conseillée : ${m.ram} Go ou plus (indicatif).</p>`:''}<p><b>${formatOctets(m.octets)}</b>${role==='video'?' + encodeur Gemma partagé':''}</p><details><summary>Sources et emplacement</summary><p class="modele-chemin">${esc(m.path)}</p>${m.sources.map(repo=>`<a href="https://huggingface.co/${repo}" target="_blank" rel="noopener noreferrer">${esc(repo)}</a><br>`).join('')}</details><div class="tl-actions">${m.installe?`<button class="petit" ${m.actif||calcul?'disabled':''} onclick="actionModele('choisir','${m.id}')">${m.actif?'Utilisé pour les prochaines tâches':'Utiliser ce modèle'}</button>`:''}${!m.local?`<button class="sec petit" ${actif?'disabled':''} onclick="actionModele('analyser','${m.id}')">Vérifier la taille</button>${m.octets!=null?`<button class="${m.installe?'sec ':''}petit" ${actif||calcul?'disabled':''} onclick="actionModele('telecharger','${m.id}')">${m.installe?'Vérifier / réparer':'Télécharger / reprendre'}</button>`:''}`:''}</div></article>`).join('')}</div></section>`).join('');
     const indisponibles=data.catalogue.filter(m=>m.compatible===false);
-    if(indisponibles.length) $('modeles-grille').innerHTML+=`<section class="encadre"><p class="alerte">Les moteurs de génération vidéo et de portraits fournis avec Studio Avatar nécessitent Apple Silicon. Sur cette machine, utilisez vos photos et médias existants ; la synthèse OmniVoice est proposée séparément.</p><details><summary>Modèles indisponibles sur cette machine (${indisponibles.length})</summary>${indisponibles.map(m=>`<p><b>${esc(m.nom)}</b><br>${esc(m.raison_incompatibilite)}</p>`).join('')}</details></section>`;
-    $('modeles-voix').innerHTML='<h3>Voix intégrées</h3><p class="mut">Téléchargez les poids du moteur compatible ci-dessus, puis gérez les références et les prises dans Mes voix. Sous Windows, le runtime vocal s’installe avec installer.bat.</p>';
+    if(indisponibles.length) $('modeles-grille').innerHTML+=`<section class="encadre"><p class="alerte">${data.capacites?.video?.compatible===false?'Aucun moteur de génération vidéo intégré pour ce système. Les variantes vocales PyTorch compatibles sont proposées ci-dessus.':'Ces variantes ne sont pas proposées pour cette architecture. Utilisez les modèles compatibles ci-dessus.'}</p><details><summary>Modèles indisponibles sur cette machine (${indisponibles.length})</summary>${indisponibles.map(m=>`<p><b>${esc(m.nom)}</b><br>${esc(m.raison_incompatibilite)}</p>`).join('')}</details></section>`;
+    $('modeles-voix').innerHTML='<h3>Voix intégrées</h3><p class="mut">Téléchargez les poids du moteur compatible ci-dessus, puis gérez les références et les prises dans Mes voix. Sous Windows, installer.bat prépare Qwen-TTS PyTorch et OmniVoice dans deux environnements séparés.</p>';
   }catch(e){$('modeles-erreur').textContent=e.message;}
 }
 async function actionModele(action,id) {

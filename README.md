@@ -133,8 +133,8 @@ Open [http://127.0.0.1:8765](http://127.0.0.1:8765). On macOS you can also run
 On Windows x64, extract or clone the repository into a writable folder and
 **double-click `installer.bat`**. No manual Python, pip or FFmpeg setup is needed:
 the bootstrap reuses Python 3.13/3.12 x64 or installs Python 3.13, installs missing
-FFmpeg/FFprobe and Microsoft Visual C++ runtime, then installs the appropriate
-voice engine in its own virtual environment. No WinGet or Microsoft Store is required. Missing prerequisites are downloaded
+FFmpeg/FFprobe and Microsoft Visual C++ runtime, then installs OmniVoice and native Qwen-TTS on Windows/Linux x64 in separate
+virtual environments, or MLX voices on Apple Silicon. No WinGet or Microsoft Store is required. Missing prerequisites are downloaded
 directly from Python.org, the FFmpeg build publisher and Microsoft, then verified
 against pinned SHA-256 hashes before use. Internet access is required. Windows
 may request permission for the Microsoft runtime; company policy can still block
@@ -153,9 +153,10 @@ installing anything. On other platforms, use `python installer.py --plan`.
 
 - Apple Silicon: MLX voice runtime; experimental Wan animation is an explicit
   `python installer.py --engine animation` option. LTX remains a separate install.
-- Windows/Linux x64: OmniVoice with PyTorch. Automatic CUDA selection requires
+- Windows/Linux x64: OmniVoice and official Qwen-TTS with PyTorch. Automatic CUDA selection requires
   NVIDIA, at least 8 GiB VRAM and driver 570+ for the pinned CUDA 12.8 recipe.
-  Otherwise CPU is selected, which can be slow. This conservative threshold is
+  Otherwise CPU is selected, which can be slow. `installer.bat` prepares both voice
+  runtimes; `--engine qwen-tts` installs only native Qwen-TTS. This conservative threshold is
   an installer policy, not a guarantee of inference memory use.
 - Other architectures: the installer refuses unvalidated engines.
 
@@ -265,7 +266,9 @@ GPU worker's process handle. Cached preview media stays in the ignored local
 ## Model catalogue and downloads
 
 The **Modèles** page adapts to the current OS and processor. On Windows/Linux x64,
-OmniVoice is the default voice engine; downloads and activation of models requiring
+OmniVoice is the default voice engine; Qwen-TTS 0.6B and 1.7B use their native
+PyTorch checkpoints in a separate `.venv-qwen` runtime (Qwen pins Transformers
+4.57.3, which is incompatible with the OmniVoice runtime). Downloads and activation of models requiring
 the studio's Apple Silicon integrations are blocked. Incompatible models are listed
 separately with an explanation. Existing incompatible voice selections are switched
 to OmniVoice without deleting any weights. A model's compatibility does not establish
@@ -749,3 +752,17 @@ Drama speech jobs use bounded passages with per-passage checkpoints and up to
 three attempts. Finished passages are preserved when resuming the same task;
 changed voice references or models require a new task. Voice conversion remains
 an optional externally configured RVC runtime; see [CONVERSION.md](CONVERSION.md).
+
+The server exposes the same detected OS, CPU architecture, RAM and NVIDIA VRAM
+to the UI and installer. Model cards identify the backend and proposed device.
+Voice generation, animation and timeline task admission use that compatibility
+information. LTX-MLX/Gemma-MLX, mflux portraits and the Wan MPS adapter still have
+no Windows runtime in this project; downloading native upstream video weights
+alone would not make those adapters work. Such downloads and generation requests
+are refused rather than queued. Existing media assembly remains available.
+
+Native Qwen-TTS loads the official local Base checkpoints with PyTorch SDPA on
+CPU/CUDA, preserving the reference/transcript and running under the voice memory
+supervisor. No FlashAttention, MLX or model download is invoked by this worker.
+The adapter and Windows dependency resolution are tested; full Windows inference
+still requires a real hardware test. See [upstream Qwen-TTS](https://github.com/QwenLM/Qwen3-TTS).

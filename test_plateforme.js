@@ -1,0 +1,10 @@
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+const html=fs.readFileSync('index.html','utf8'),code=html.split('// BEGIN PLATFORM UI')[1].split('// END PLATFORM UI')[0];
+const node={},alerts=[];
+const context=vm.createContext({E:{plateforme:{os:'Windows',arch:'amd64',ram_gib:32},capacites:{video:{compatible:false,raison:'Pas de moteur LTX intégré pour Windows'},synthese:{compatible:true}}},$:()=>node,alert:s=>alerts.push(s)});
+vm.runInContext(code,context);
+assert.equal(context.verifierRole('video'),false);
+assert.match(alerts[0],/Windows/);
+assert.equal(context.verifierRole('synthese'),true);
+context.afficherPlateforme();assert.match(node.textContent,/Windows/);assert.match(node.textContent,/32 Go RAM/);assert.match(node.textContent,/Aucun moteur/);
+console.log('Interface : système détecté, voix disponibles et génération vidéo indisponible expliquée.');

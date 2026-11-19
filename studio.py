@@ -455,7 +455,7 @@ class H(BaseHTTPRequestHandler):
         if u.path == '/': return self.envoyer(ICI / 'index.html', 'text/html; charset=utf-8')
         if u.path == '/api/etat':
             libs = {s.name: lib_avatar(s.name) for s in (ICI / 'sources').iterdir() if not s.name.startswith('.')}
-            return self.json(dict(taches=TACHES[-60:][::-1], fichiers=fichiers(), t7=GESTION_MODELES.selection()['video']['installe'], base_clip=BASE_CLIP,
+            return self.json(dict(plateforme=modeles.plateforme.detecter(),capacites=GESTION_MODELES.capacites(),taches=TACHES[-60:][::-1], fichiers=fichiers(), t7=GESTION_MODELES.selection()['video']['installe'], base_clip=BASE_CLIP,
                                   tons=[dict(cle=k, nom=n, emoji=e, balise=bs[0], geste=GESTES[gs[0]]) for k, n, e, bs, gs in TONS], balises=BALISES, balises_vocales=balises.VOCALES, libs=libs))
         if u.path == '/api/apercu': return self.json(apercus.etat(parse_qs(u.query).get('projet', [''])[0]))
         if u.path == '/api/modeles/voix': return self.json(GESTION_MODELES.voix_catalogue())
@@ -566,6 +566,9 @@ class H(BaseHTTPRequestHandler):
             except (ValueError, KeyError, TypeError) as e: return self.json(dict(erreur=str(e)), 400)
         if u.path == '/api/tache':
             if d.get('type') not in ('clip', 'pont', 'sequence', 'lipsync', 'video', 'avatar', 'variante', 'portrait'): return self.json(dict(erreur='type inconnu'), 400)
+            try:
+                if d['type']!='sequence':GESTION_MODELES.verifier_role('image' if d['type']=='portrait' else 'lipsync' if d['type']=='lipsync' else 'video')
+            except ValueError as exc:return self.json(dict(erreur=str(exc)),400)
             if d['type'] == 'avatar': nouvelles = preparation(d['params']['source'])
             else: nouvelles = [d]
             with VERROU:
