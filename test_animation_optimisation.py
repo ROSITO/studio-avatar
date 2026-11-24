@@ -34,6 +34,29 @@ class OptimisationTexteTest(unittest.TestCase):
                 again.zero_()
                 torch.testing.assert_close(pipe._get_t5_prompt_embeds(prompts,max_sequence_length=32),first,rtol=0,atol=0)
 
+    def test_cache_texte_persistant_et_invalidation(self):
+        import torch,tempfile,os
+        from pathlib import Path
+        import animation_texte
+        from transformers import UMT5Config,UMT5EncoderModel
+        model=UMT5EncoderModel(UMT5Config(vocab_size=20,d_model=16,d_ff=32,num_layers=1,num_heads=2,d_kv=8)).eval()
+        def tokenizer(prompts,**kwargs):
+            ids=torch.zeros(len(prompts),kwargs['max_length'],dtype=torch.long);ids[:,0]=1
+            return SimpleNamespace(input_ids=ids,attention_mask=ids.clone())
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp=Path(tmp);weights=tmp/'weights';weights.write_bytes(b'identity')
+            model._studio_lecteur=SimpleNamespace(index={'w':dict(safetensors_file=str(weights))})
+            def pipeline():return SimpleNamespace(text_encoder=model,tokenizer=tokenizer,_execution_device='cpu')
+            a=pipeline();animation_texte.installer(a,tmp/'cache');expected=a._get_t5_prompt_embeds('',max_sequence_length=16)
+            b=pipeline();animation_texte.installer(b,tmp/'cache')
+            with patch.object(model,'forward',side_effect=AssertionError('Disk cache must avoid T5')):
+                actual=b._get_t5_prompt_embeds('',max_sequence_length=16)
+            torch.testing.assert_close(actual,expected,rtol=0,atol=0)
+            st=weights.stat();os.utime(weights,ns=(st.st_atime_ns,st.st_mtime_ns+1000000))
+            c=pipeline();animation_texte.installer(c,tmp/'cache')
+            with patch.object(model,'forward',wraps=model.forward) as forward:
+                c._get_t5_prompt_embeds('',max_sequence_length=16);self.assertEqual(forward.call_count,1)
+
     def test_attention_adaptive_equivalente_aux_petits_blocs(self):
         import torch
         import animation_mps

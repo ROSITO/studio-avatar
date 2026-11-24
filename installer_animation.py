@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Install an isolated experimental MPS runtime, without downloading model weights."""
 import json
+import platform
 from pathlib import Path
 import subprocess
 import sys
@@ -9,12 +10,14 @@ from animation import RUNTIME_REVISION
 
 
 def main():
+    if platform.system()!='Darwin' or platform.machine()!='arm64':raise SystemExit('Animation MPS/MLX : macOS Apple Silicon requis.')
     root=Path(__file__).resolve().parent
     if sys.version_info<(3,11):raise SystemExit('Python 3.11 ou plus récent requis.')
     target=root/'.venv-animation'
     venv.EnvBuilder(with_pip=True).create(target)
     py=target/'bin/python'
     subprocess.run([str(py),'-m','pip','install','torch==2.15.0','transformers==5.22.0','accelerate==1.15.0',
+        'mlx==0.32.4; sys_platform == "darwin" and platform_machine == "arm64"',
         'safetensors','sentencepiece','protobuf','opencv-python-headless','imageio[ffmpeg]','pillow','ftfy','einops',
         f'git+https://github.com/kelseyee/diffusers.git@{RUNTIME_REVISION}'],check=True)
     if sys.platform=='darwin':subprocess.run([str(py),str(root/'adapter_animation.py')],check=True)

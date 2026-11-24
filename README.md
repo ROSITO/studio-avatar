@@ -128,6 +128,67 @@ Open [http://127.0.0.1:8765](http://127.0.0.1:8765). On macOS you can also run
 `lancer.command`. Install FFmpeg using your system package manager (for example,
 `brew install ffmpeg` on macOS or `sudo apt-get install ffmpeg` on Ubuntu).
 
+### Installation adapted to the machine
+
+On Windows x64, extract or clone the repository into a writable folder and
+**double-click `installer.bat`**. No manual Python, pip or FFmpeg setup is needed:
+the bootstrap reuses Python 3.13/3.12 x64 or installs Python 3.13, installs missing
+FFmpeg/FFprobe and Microsoft Visual C++ runtime, then installs OmniVoice and native Qwen-TTS on Windows/Linux x64 in separate
+virtual environments, or MLX voices on Apple Silicon. No WinGet or Microsoft Store is required. Missing prerequisites are downloaded
+directly from Python.org, the FFmpeg build publisher and Microsoft, then verified
+against pinned SHA-256 hashes before use. Internet access is required. Windows
+may request permission for the Microsoft runtime; company policy can still block
+installation. FFmpeg is installed locally in `%LOCALAPPDATA%\StudioAvatar\tools`
+and added to PATH only for Studio Avatar, without changing the global PATH.
+Download versions, URLs, hashes and manifest sources are in
+`windows-dependencies.json`. Interrupted downloads are retried; verified downloads
+are reused from the local cache.
+
+Then double-click `lancer.bat`. The selected Python path is saved locally and
+PATH changes are applied in the launch session; no terminal restart is needed.
+Model weights are still downloaded explicitly from **Modeles**. An interrupted
+installation created by this installer can be retried by running it again; existing
+unmanaged runtimes are preserved. `installer.bat --plan` reports the plan without
+installing anything. On other platforms, use `python installer.py --plan`.
+
+- Apple Silicon: MLX voice runtime; experimental Wan animation is an explicit
+  `python installer.py --engine animation` option. LTX-MLX remains a separate install on Mac.
+- Windows/Linux x64: OmniVoice and official Qwen-TTS with PyTorch. Automatic CUDA selection requires
+  NVIDIA, at least 8 GiB VRAM and driver 570+ for the pinned CUDA 12.8 recipe.
+  Otherwise CPU is selected, which can be slow. `installer.bat` prepares both voice
+  runtimes; `--engine qwen-tts` installs only native Qwen-TTS. This conservative threshold is
+  an installer policy, not a guarantee of inference memory use.
+- Other architectures: the installer refuses unvalidated engines.
+
+`--engine interface` checks only the interface prerequisites. `--engine omnivoice
+--device cpu` explicitly selects CPU. GPU backends are checked after installation;
+installation is not a full model inference test. Native LTX video requires a
+NVIDIA Ampere-or-newer GPU with at least 8 GiB VRAM, driver 570+, and 32 GiB RAM.
+Native FLUX portraits require at least 12 GiB VRAM and the same RAM/driver limits.
+These are conservative admission rules, not performance or quality guarantees.
+Small hardware reservations are allowed when identifying nominal 32 GB RAM and
+8/12 GB VRAM configurations.
+On suitable hardware automatic setup also prepares `.venv-ltx` and `.venv-image`.
+Explicit options are `--engine ltx` and `--engine image`; CPU mode is refused for
+these two engines. A Windows laptop with 32 GB RAM and 4 GB VRAM receives the
+interface and CPU voice engines, without multi-gigabyte incompatible visual downloads.
+
+### Windows
+
+Run `installer.bat` once, then `lancer.bat`. The launcher checks prerequisites,
+waits for the local server, then opens the browser. Keep its console open;
+Ctrl+C stops the server. `lancer.bat --no-browser` starts without opening a browser.
+
+Windows configuration uses environment variables, not `source .env`. For example,
+in Command Prompt: `set "STUDIO_PORT=8766"` then `lancer.bat`. The `.env` example
+is not automatically loaded. Paths containing spaces are supported by the launcher.
+
+The interface and local media editing can run on Windows. LTX-2-MLX, mflux and MLX
+speech generation require Apple Silicon and do not become Windows compatible
+through this launcher. Compatible Windows NVIDIA systems use separate native
+PyTorch LTX-2.3 and FLUX.2 Klein pipelines, not the MLX weights. Full Windows GPU
+inference and visual quality still require validation on the target hardware.
+
 ## Configure generation engines
 
 The studio orchestrates external tools. Install the engines separately; model
@@ -211,7 +272,16 @@ GPU worker's process handle. Cached preview media stays in the ignored local
 
 ## Model catalogue and downloads
 
-The **Modèles** page provides:
+The **Modèles** page adapts to the current OS and processor. On Windows/Linux x64,
+OmniVoice is the default voice engine; Qwen-TTS 0.6B and 1.7B use their native
+PyTorch checkpoints in a separate `.venv-qwen` runtime (Qwen pins Transformers
+4.57.3, which is incompatible with the OmniVoice runtime). Downloads and activation of models requiring
+the studio's Apple Silicon integrations are blocked. Incompatible models are listed
+separately with an explanation. Existing incompatible voice selections are switched
+to OmniVoice without deleting any weights. A model's compatibility does not establish
+that its runtime or weights are already installed.
+
+On Apple Silicon, the catalogue provides:
 
 - LTX-2.3 Q4, Q8, and BF16 packs for the current distilled recipe;
 - the shared Gemma 3 12B 4-bit text encoder;
@@ -565,8 +635,9 @@ small additional residency result is insufficient to enable residency by default
 
 ### Wan MPS execution optimizations
 
-New animation workers retain the same FP32 computation, output resolution,
-40 denoising steps, guidance, and driving-video frames. Two changes reduce
+Animation workers retain the same output resolution, 40 denoising steps,
+guidance, and driving-video frames. Sensitive modulation stays in FP32; the
+latest loader uses BF16 for transformer linear projections (see below). Two changes reduce
 avoidable work:
 
 - Attention uses adaptive query/head tiles instead of fixed 64-query/4-head
@@ -595,3 +666,123 @@ numerical tolerance. This is **not** a full-model speed or quality benchmark.
 Disk offload of the 14B model is still expensive; practical full-quality runtime
 on a 36 GiB Mac has not been established. These optimizations alone do not
 establish that multi-second video generation will finish in minutes.
+
+### Wan direct weight loading and mixed projections
+
+The previous offload reader reopened safetensors shard mappings and converted
+BF16 checkpoint tensors to FP32 on each layer invocation. The new reader indexes
+headers once, reuses file descriptors and reads only each requested tensor into
+its final CPU buffer using positional reads. It then releases tensors through
+Accelerate's usual per-layer offload hooks. No full checkpoint is materialized,
+no additional weight copy is written, and the process ceiling remains unchanged.
+
+Transformer linear projections use BF16 weights and BF16 matrix multiplication,
+returning FP32 activations for the existing reference/motion logic. Time
+embedding, time projection and modulation remain FP32; text/image encoders and
+VAE keep their existing precision. `STUDIO_WAN_MIXED=0` restores FP32 projections
+for comparisons. Unlike the attention tiling change, mixed precision changes
+rounding and still needs full-model visual quality validation.
+
+The diagnostic endpoint accepts `mesurer_etape: true` to measure one complete
+step at the normal resolution and guidance of 3, rather than the tiny technical
+smoke test. Its output remains a **one-step diagnostic**, not a finished quality
+sample. Diagnostics are serialized through the same job queue and guarded by
+the same process memory supervisor.
+
+### Experimental native MPS 4-bit cache
+
+The installed PyTorch MPS backend provides `_convert_weight_to_int4pack` and
+`_weight_int4pack_mm`. An opt-in `int4: true` animation request stores eligible transformer-block
+projections in that packed format. Vector-sized batches use native int4 MPS;
+video-sized batches temporarily dequantize one projection and use BF16 GEMM.
+`STUDIO_WAN_Q4_KERNEL=gemv` restores the direct int4 path for comparisons. It does not switch
+to the different Wan2.2-Animate checkpoint or require downloading new weights.
+
+The first use derives group-64 affine 4-bit weights one projection at a time.
+Atomic safetensors cache files are stored under `.studio-avatar-q4` beside the
+model components, on the model disk. The original checkpoint is unchanged.
+Cache identity includes the source tensor, source file size/mtime, bias source,
+PyTorch version and packing format. The block projections occupy approximately
+8.46 GiB with BF16 scales; about 10 GiB of free model-disk space is needed for
+initial preparation and temporary headroom.
+
+A stable subset is retained on MPS. `STUDIO_WAN_Q4_CACHE_MB` accepts 0–9216 MiB;
+the effective limit is additionally bounded by the process ceiling, current GPU
+allocations and system RAM reserve. Retained tensors are released under pressure.
+Reference K/V caches use BF16 in this mode; modulation remains FP32. Retention
+is cleared before VAE decoding. The worker's total 12 GiB budget is unchanged.
+The MPS allocator fraction now uses `recommended_max_memory()` (its actual
+reference), reserving 2 GiB for CPU buffers inside that total worker budget.
+
+Quantization changes rounding. Kernel/unit tests, deterministic disk reload,
+cache bounds and a tiny reference/motion transformer test are covered; full-model
+visual quality remains experimental. The real-resolution diagnostic uses two
+steps in 4-bit mode to distinguish initial preparation from warm execution.
+A normal request remains at 40 steps; diagnostic videos are explicitly marked
+as diagnostic and are not quality-validation samples.
+
+Local full-resolution one-step measurements: direct mixed BF16 took 172.29 s
+per step; the 4-bit/GEMM diagnostic took 144.94 s then 144.29 s, with a 9.98 GiB
+supervised peak. The measured improvement is about 16%, not the much larger
+attention-only microbenchmark gain. That diagnostic retained almost no useful
+GPU cache hits; 4-bit execution therefore remains opt-in and experimental.
+The newer adaptive allocator low watermark is set before PyTorch imports so
+buffer collection starts within the worker budget, rather than at PyTorch's
+larger default working-set threshold. The high limit and supervisor stay enabled.
+
+Short tests can explicitly request `profil: "apercu"`: 8 steps, 12 fps and a
+192×288 target area (portrait; actual dimensions preserve the image aspect).
+`profil: "qualite"`, and legacy requests omitting the profile, retain 40 steps,
+24 fps and the 256×384 target area. These are **different quality presets**, not
+an equivalent-quality speedup. The frontend defaults new tests to the clearly
+labelled quick preview; 4-bit execution is not exposed in the normal interface.
+Playback/muxing uses the selected fps so motion and original audio retain their
+original duration. Source input is still ingested at 24 fps, then resampled by
+Wan for the selected preset.
+
+Progress now reports completed reference layers and fractional progress across
+denoising layers, conditional/unconditional passes, steps and segments. This
+continues inside a slow step and survives the API's truncated log window.
+Prompt embeddings are also cached atomically on the model disk, keyed by exact
+tokens/masks, dtype, source checkpoint metadata and runtime/helper versions.
+No personal media, derived weights, embeddings or runtime logs are published.
+
+Visual validation of the 8-step 4-bit preview found severe color/face artifacts.
+The 4-bit path is therefore **not validated for usable output**, remains off by
+default, and is available only through explicit API/diagnostic requests for
+research. It must not be described as a successful equivalent-quality speedup.
+
+### Additional local voice capabilities
+
+Qwen3-TTS 1.7B MLX is available alongside the 0.6B model on Apple Silicon.
+Drama speech jobs use bounded passages with per-passage checkpoints and up to
+three attempts. Finished passages are preserved when resuming the same task;
+changed voice references or models require a new task. Voice conversion remains
+an optional externally configured RVC runtime; see [CONVERSION.md](CONVERSION.md).
+
+The server exposes the same detected OS, CPU architecture, RAM and NVIDIA VRAM
+to the UI and installer. Model cards identify the backend and proposed device.
+Voice generation, animation and timeline task admission use that compatibility
+information. LTX uses the pinned official Lightricks pipeline on compatible
+Windows/Linux CUDA machines, with disk offload, image anchors and audio conditioning.
+It requires the native LTX checkpoint, distilled LoRA, spatial upscaler and native
+Gemma encoder; their weights total many tens of gigabytes and Google license access
+may be required. The original speech is muxed back without regeneration. FLUX uses
+Diffusers with sequential offload and supports the same photo references. Mac keeps
+LTX-MLX/mflux. The experimental Wan MPS adapter remains Mac-only. Unsupported
+hardware and incompatible model/runtime combinations are refused before downloads
+or queued generation. Existing media assembly remains available.
+
+Native Qwen-TTS loads the official local Base checkpoints with PyTorch SDPA on
+CPU/CUDA, preserving the reference/transcript and running under the voice memory
+supervisor. No FlashAttention, MLX or model download is invoked by this worker.
+The adapter and Windows dependency resolution are tested; full Windows inference
+still requires a real hardware test. See [upstream Qwen-TTS](https://github.com/QwenLM/Qwen3-TTS).
+
+The native visual adapters are experimental: unit/contract tests and Windows
+package resolution do not establish real-model rendering speed or visual fidelity.
+Workers load local weights offline and run under both an allocator ceiling and
+the independent process memory watchdog. `STUDIO_VISUAL_MAX_RAM_GB` defaults to
+16 GiB, capped at half physical RAM, with a 4 GiB system admission reserve.
+Optional existing runtimes can be selected with `STUDIO_LTX_PYTHON` and
+`STUDIO_IMAGE_PYTHON`. FLUX results and final native clips replace files atomically.

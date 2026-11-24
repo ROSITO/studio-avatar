@@ -14,8 +14,12 @@ import time
 import urllib.request
 import urllib.parse
 import uuid
+import drama_segments
+import modeles as catalogue_modeles
 
-ENGINES = ('omnivoice', 'qwen3-tts-mlx', 'drama3-mlx')
+ErreurValidation = drama_segments.Validation
+
+ENGINES = ('qwen3-tts-torch', 'qwen3-tts-17b-torch', 'omnivoice', 'qwen3-tts-mlx', 'qwen3-tts-17b-mlx', 'drama3-mlx')
 
 class Atelier:
     def __init__(self, studio):
@@ -24,6 +28,8 @@ class Atelier:
         self.path=self.root/'profils.json'
         self.python=Path(os.environ.get('STUDIO_TTS_PYTHON',str(studio.ICI/'.venv-voix'/('Scripts/python.exe' if os.name=='nt' else 'bin/python')))).expanduser()
     def interpreteur(self,mid):
+        if mid.endswith('-torch'):
+            return Path(os.environ.get('STUDIO_QWEN_PYTHON',str(self.s.ICI/'.venv-qwen'/('Scripts/python.exe' if os.name=='nt' else 'bin/python')))).expanduser()
         if mid!='omnivoice':return self.python
         return Path(os.environ.get('STUDIO_OMNIVOICE_PYTHON',str(self.s.ICI/'.venv-omnivoice'/('Scripts/python.exe' if os.name=='nt' else 'bin/python')))).expanduser()
     def lire(self):
@@ -33,20 +39,23 @@ class Atelier:
         tmp=self.path.with_suffix('.tmp');tmp.write_text(json.dumps(profils,ensure_ascii=False,indent=2));tmp.replace(self.path)
     def catalogue(self):
         g=self.s.GESTION_MODELES; moteur=g.config['selection'].get('synthese','qwen3-tts-mlx')
-        compatible=platform.system()=='Darwin' and platform.machine()=='arm64'
         engines=[]
         for mid in ENGINES:
             e=g.entry(mid);p=g.path(e);present=g.valid(e,p)
-            support=compatible or mid=='omnivoice';runtime=self.interpreteur(mid).is_file()
+            support=catalogue_modeles.compatibilite(e)['compatible'];runtime=self.interpreteur(mid).is_file()
             try:
                 memoire.verifier(mid);memoire_ok=True;raison_memoire=''
             except ValueError as exc:memoire_ok=False;raison_memoire=str(exc)
             engines.append(dict(id=mid,display_name=e['nom'],available=support and runtime and present and memoire_ok,
-                reason=raison_memoire if not memoire_ok else '' if support and runtime and present else 'Apple Silicon requis' if not support else 'Installez le runtime '+('.venv-omnivoice' if mid=='omnivoice' else '.venv-voix') if not runtime else 'Téléchargez les poids dans Modèles',supports_cloning=True,supports_voice_design=False,supports_inline_tags=mid=='drama3-mlx'))
+                reason=raison_memoire if not memoire_ok else '' if support and runtime and present else catalogue_modeles.compatibilite(e)['raison_incompatibilite'] if not support else 'Installez le runtime '+('.venv-qwen' if mid.endswith('-torch') else '.venv-omnivoice' if mid=='omnivoice' else '.venv-voix') if not runtime else 'Téléchargez les poids dans Modèles',supports_cloning=True,supports_voice_design=False,supports_inline_tags=mid=='drama3-mlx'))
         return dict(ok=True,actif=moteur,engines=engines)
     def liste(self):
         c=self.catalogue();pret=next(e['available'] for e in c['engines'] if e['id']==c['actif'])
-        return dict(ok=pret,voix=self.lire(),moteur=c['actif'],engines=c['engines'],lots=self.lots())
+        return dict(ok=pret,voix=self.lire(),moteur=c['actif'],engines=c['engines'],lots=self.lots(),
+                    traitement_drama=dict(version=1,segmentation_automatique=True,
+                        maximum_caracteres_par_passage=drama_segments.MAX_CHARS,
+                        maximum_octets_par_passage=drama_segments.MAX_BYTES,
+                        essais_par_passage=3,reprise='POST /api/voix/essai avec {"reprendre":"ID"}'))
     def lots(self):
         with self.s.VERROU:
             candidates=[t for t in self.s.TACHES if t.get('type')=='voix' and t.get('params',{}).get('lot')]
@@ -54,6 +63,7 @@ class Atelier:
             return [dict(id=t['id'],etat=t['etat'],etape=t.get('etape'),erreur=t.get('erreur'),resultat=t.get('resultat'),
                 params={k:t['params'][k] for k in ('lot','nom_fichier','ordre','taille_lot')}) for t in candidates if t['params']['lot'] in ids]
     def profil(self,pid):
+        if not isinstance(pid,str) or not pid:raise ValueError('Identifiant de profil vocal requis.')
         p=next((p for p in self.lire() if pid in (p['id'],p.get('ancien_id'))),None)
         if not p:raise ValueError('Profil vocal introuvable dans Mes voix.')
         return p
@@ -114,13 +124,13 @@ class Atelier:
         texte_original=texte
         texte=balises.pour_voix(texte,choix['id'],self.s.BALISES)
         if not texte.strip():raise ValueError('Texte vide après retrait des balises non prises en charge.')
-        t['memoire']=dict(budget_octets=plafond,reserve_systeme_octets=4*memoire.GIB,mode='essai_borne' if choix['id']=='drama3-mlx' else 'standard')
+        t['memoire']=dict(budget_octets=plafond,reserve_systeme_octets=memoire.reserve_systeme(),mode='essai_borne' if choix['id']=='drama3-mlx' else 'standard')
         req=self.root/(t['id']+'-requete.json');brut=self.root/(t['id']+'-brut.wav');tmp=out.with_suffix('.tmp.wav')
         if t.get('type')=='voix_mesure' and choix['id']!='drama3-mlx':raise ValueError('Mesure réservée à Drama 3.')
         req.write_text(json.dumps(dict(texte=texte,moteur=choix['id'],modele=choix['path'],reference=str(self.s.ICI/'references'/profil['reference']),transcription=profil['texte'],langue=langue,seed=int(seed),sortie=str(brut),optimiser=t.get('params',{}).get('optimiser',True),mesurer_contexte=t.get('type')=='voix_mesure'),ensure_ascii=False))
         try:
             t['etape']='Synthèse vocale locale · '+g.entry(choix['id'])['nom'];self.s.sauver()
-            self.s.lancer(t,[python,'-u',self.s.ICI/('lancer_omnivoice.py' if choix['id']=='omnivoice' else 'lancer_voix.py'),req],env={'STUDIO_TTS_EFFECTIVE_LIMIT':str(plafond),'HF_HUB_OFFLINE':'1','TRANSFORMERS_OFFLINE':'1','HF_HOME':str(self.s.MODELES/'huggingface')})
+            self.s.lancer(t,[python,'-u',self.s.ICI/('lancer_qwen.py' if choix['id'].endswith('-torch') else 'lancer_omnivoice.py' if choix['id']=='omnivoice' else 'lancer_voix.py'),req],env={'STUDIO_TTS_EFFECTIVE_LIMIT':str(plafond),'HF_HUB_OFFLINE':'1','TRANSFORMERS_OFFLINE':'1','HF_HOME':str(self.s.MODELES/'huggingface')})
             if t.get('type')=='voix_mesure':
                 t['resultat']=dict(mesure=json.loads(brut.with_suffix('.json').read_text()));return
             if not brut.is_file() or brut.stat().st_size<44:raise RuntimeError('Le moteur vocal n’a produit aucun audio. Consultez le journal.')
@@ -146,19 +156,42 @@ class Atelier:
             for f in (req,brut,brut.with_suffix('.json'),tmp,partiel.with_suffix('.tmp.wav')):f.unlink(missing_ok=True)
             if not t.get('erreur_sauvegarde_partielle'):partiel.unlink(missing_ok=True)
     def preparer_essai(self,d,modeles=None):
-        profil=self.profil(d.get('profil'));texte=str(d.get('texte','')).strip()
-        if not texte or len(texte)>5000:raise ValueError('Saisissez entre 1 et 5000 caractères.')
-        if not isinstance(d.get('mesurer_contexte',False),bool):raise ValueError('mesurer_contexte doit être un booléen.')
-        if not isinstance(d.get('optimiser',True),bool):raise ValueError('optimiser doit être un booléen.')
+        if not isinstance(d,dict):raise ErreurValidation('requete_invalide','Objet JSON attendu.',champ='requete')
+        try:profil=self.profil(d.get('profil'))
+        except ValueError as exc:raise ErreurValidation('profil_introuvable',str(exc),champ='profil',suggestion='Choisir un identifiant retourné par GET /api/voix.') from exc
+        texte=d.get('texte','')
+        if not isinstance(texte,str):raise ErreurValidation('texte_invalide','Le texte doit être une chaîne.',champ='texte')
+        texte=texte.strip()
+        if not texte or len(texte)>5000:raise ErreurValidation('longueur_texte','Saisissez entre 1 et 5000 caractères.')
+        if not isinstance(d.get('mesurer_contexte',False),bool):raise ErreurValidation('type_invalide','mesurer_contexte doit être un booléen.',champ='mesurer_contexte')
+        if not isinstance(d.get('optimiser',True),bool):raise ErreurValidation('type_invalide','optimiser doit être un booléen.',champ='optimiser')
         seed=d.get('seed')
-        if seed is not None and (isinstance(seed,bool) or not isinstance(seed,int) or not 0<=seed<2**31):raise ValueError('Seed vocale : entier entre 0 et 2147483647.')
+        if seed is not None and (isinstance(seed,bool) or not isinstance(seed,int) or not 0<=seed<2**31):raise ErreurValidation('seed_invalide','Seed vocale : entier entre 0 et 2147483647.',champ='seed')
         t=dict(id=uuid.uuid4().hex[:12],type='voix_mesure' if d.get('mesurer_contexte') else 'voix',params=dict(profil=profil['id'],texte=texte,langue=profil['langue']),modeles=modeles if modeles is not None else self.s.GESTION_MODELES.selection(),etat='en attente',cree=time.time())
         if 'optimiser' in d:t['params']['optimiser']=d['optimiser']
         if seed is not None:t['params']['seed']=seed
+        if t['type']=='voix' and t['modeles'].get('synthese',{}).get('id')=='drama3-mlx':
+            t['segmentation']=drama_segments.plan(texte)
         return t
     def essai(self,d):
+        if isinstance(d,dict) and 'reprendre' in d:return self.reprendre(d)
         t=self.preparer_essai(d)
         with self.s.VERROU:self.s.TACHES.append(t)
+        self.s.sauver()
+        return t
+    def reprendre(self,d):
+        if set(d)!={'reprendre'}:
+            raise ErreurValidation('reprise_modifiee','Une reprise accepte uniquement le champ reprendre.',champ='requete',suggestion='Envoyer {"reprendre":"ID"} ; créer une autre tâche pour modifier le texte.')
+        with self.s.VERROU:
+            t=next((t for t in self.s.TACHES if t['id']==d['reprendre']),None)
+            if not t or t.get('type')!='voix' or not t.get('segmentation'):
+                raise ErreurValidation('reprise_introuvable','Tâche segmentée introuvable.',champ='reprendre')
+            if t['etat'] in ('en attente','en cours','finie'):return t
+            for segment in t['segmentation']['segments']:
+                if segment['etat']!='finie':segment['etat']='en attente';segment['essais']=0
+            for key in ('annuler','erreur','erreur_detail','fin','partiel'):
+                t.pop(key,None)
+            t['etat']='en attente'
         self.s.sauver()
         return t
     def lot(self,d):
@@ -189,6 +222,9 @@ class Atelier:
                 if re.match(r'^\{\\rtf\d',texte):raise ValueError(nom+' : format RTF non décodé.')
             if '\x00' in texte:raise ValueError(nom+' : fichier texte UTF-8 attendu.')
             try:t=self.preparer_essai(dict(profil=profil['id'],texte=texte),modeles)
+            except ErreurValidation as exc:
+                raise ErreurValidation(exc.detail['code'],nom+' : '+str(exc),
+                    champ=f'fichiers[{i}].'+exc.detail['champ'],suggestion=exc.detail['suggestion']) from exc
             except ValueError as exc:raise ValueError(nom+' : '+str(exc)) from exc
             t['params'].update(lot=lot,nom_fichier=nom,ordre=i+1,taille_lot=len(fichiers))
             taches.append(t)
@@ -198,5 +234,75 @@ class Atelier:
         return dict(lot=lot,ajoutees=len(taches),taches=[t['id'] for t in taches])
     def executer(self,t):
         p=t['params'];out=self.s.ICI/'audios'/('voix-'+t['id']+'.wav')
+        if t.get('type')=='voix' and t.get('modeles',{}).get('synthese',{}).get('id')=='drama3-mlx':
+            self.executer_segments(t,out)
+            return
         self.generer(t,p['texte'],p['profil'],p['langue'],out,seed=p.get('seed',int(t['id'][:8],16)%2147483648))
         if t.get('type')!='voix_mesure':t['resultat']=dict(fichier=out.name,profil=p['profil'])
+
+    def executer_segments(self,t,out):
+        p=t['params'];profil=self.profil(p['profil'])
+        segmentation=t.setdefault('segmentation',drama_segments.plan(p['texte']))
+        seed=p.get('seed',int(t['id'][:8],16)%2147483648)
+        sig=drama_segments.signature(p['texte'],profil,t['modeles']['synthese'],seed,
+                                    self.s.ICI/'references'/profil['reference'])
+        if segmentation.get('signature') not in (None,sig):
+            raise RuntimeError('Le profil, la référence ou le modèle ont changé : créer une nouvelle tâche pour éviter de mélanger les voix.')
+        segmentation['signature']=sig
+        checkpoint=self.root/(t['id']+'-segments.json')
+        def sauver():
+            tmp=checkpoint.with_suffix('.tmp')
+            tmp.write_text(json.dumps(segmentation,ensure_ascii=False,indent=2));tmp.replace(checkpoint)
+            self.s.sauver()
+        def journal(message):
+            path=self.s.ICI/'taches'/(t['id']+'.log');path.parent.mkdir(exist_ok=True)
+            with path.open('a') as f:f.write(message+'\n')
+        for segment in segmentation['segments']:
+            if t.get('annuler'):raise RuntimeError('Tâche annulée')
+            if segment['etat']=='finie':
+                try:drama_segments.duration(self.s.ICI/'audios'/segment['fichier']);continue
+                except (OSError,ValueError,EOFError,drama_segments.wave.Error):
+                    segment['etat']='en attente';segment['essais']=0
+                    segmentation['termines']=sum(s['etat']=='finie' for s in segmentation['segments'])
+            segment['etat']='en cours';sauver()
+            while segment['essais']<3:
+                if t.get('annuler'):raise RuntimeError('Tâche annulée')
+                segment['essais']+=1
+                index=segment['ordre'];attempt=segment['essais']
+                child_id=f"{t['id']}-s{index:03d}-a{attempt}"
+                child=dict(id=child_id,type='voix',params=dict(p),modeles=t['modeles'])
+                destination=self.s.ICI/'audios'/('voix-'+child_id+'.wav')
+                t['etape']=f"Drama 3 · passage {index}/{segmentation['total']} · essai {attempt}/3"
+                journal(t['etape']);sauver()
+                try:
+                    self.generer(child,segment['texte'],p['profil'],p['langue'],destination,
+                                 seed=(seed+attempt-1)%2**31)
+                    if child.get('memoire'):t['memoire']=child['memoire']
+                    if t.get('annuler'):raise RuntimeError('Tâche annulée')
+                    segment.update(etat='finie',fichier=destination.name,
+                        duree=drama_segments.duration(destination),seed=(seed+attempt-1)%2**31)
+                    segment.pop('erreur',None)
+                    segmentation['termines']=sum(s['etat']=='finie' for s in segmentation['segments'])
+                    journal(f"Passage {index} sauvegardé : {destination.name}");sauver();break
+                except Exception as exc:
+                    if t.get('annuler'):
+                        segment['etat']='annulée';sauver();raise RuntimeError('Tâche annulée') from exc
+                    segment['erreur']=str(exc)
+                    if child.get('partiel'):segment['partiel']=child['partiel']
+                    log=self.s.ICI/'taches'/(child_id+'.log')
+                    journal(f"Échec passage {index} : {exc}\n"+(log.read_text(errors='replace')[-4000:] if log.exists() else ''))
+                    segment['etat']='erreur';sauver()
+            if segment['etat']!='finie':
+                t['erreur_detail']=dict(code='segment_en_echec',segment=segment['ordre'],
+                    message=segment.get('erreur','Échec de synthèse'),relancable=True,
+                    suggestion='Reprendre avec POST /api/voix/essai et {"reprendre":"'+t['id']+'"}. Les passages terminés seront conservés.')
+                raise RuntimeError(f"Passage {segment['ordre']}/{segmentation['total']} en échec après 3 essais ; passages terminés conservés.")
+        if t.get('annuler'):raise RuntimeError('Tâche annulée')
+        t['etape']='Assemblage des passages Drama 3';sauver()
+        drama_segments.assemble(self.s.ICI/'audios',segmentation['segments'],out,
+                                cancelled=lambda:bool(t.get('annuler')))
+        out.with_suffix('.json').write_text(json.dumps(dict(synthetique=True,moteur='drama3-mlx',
+            profil=p['profil'],texte=p['texte'],seed=seed,segmentation=segmentation),ensure_ascii=False,indent=2))
+        t['resultat']=dict(fichier=out.name,profil=p['profil'],segments=segmentation['total'],
+                           duree=drama_segments.duration(out))
+        journal('Prise complète assemblée : '+out.name)

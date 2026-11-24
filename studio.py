@@ -137,19 +137,46 @@ def lancer(t, cmd, env=None):
         raise RuntimeError(memoire.decrire_arret((ICI/'taches'/f"{t['id']}.log").read_text(errors='replace')[-8000:]))
     if code: raise RuntimeError(f'commande terminée avec le code {code} (voir le journal)')
 
+def lancer_natif(t,engine,params):
+    import memoire
+    nom='.venv-ltx' if engine=='ltx' else '.venv-image'
+    variable='STUDIO_LTX_PYTHON' if engine=='ltx' else 'STUDIO_IMAGE_PYTHON'
+    python=Path(os.environ.get(variable,str(ICI/nom/('Scripts/python.exe' if os.name=='nt' else 'bin/python')))).expanduser()
+    if not python.is_file():raise RuntimeError('Runtime natif absent : relancez installer.bat ou python installer.py --engine '+engine)
+    asked=float(os.environ.get('STUDIO_VISUAL_MAX_RAM_GB','16'))
+    if not math.isfinite(asked) or asked<2:raise ValueError('Budget visuel invalide (au moins 2 Gio).')
+    cap=int(min(asked*memoire.GIB,memoire.physique()/2))
+    req=ICI/'taches'/(t['id']+'-'+engine+'-requete.json');req.parent.mkdir(exist_ok=True)
+    req.write_text(json.dumps(dict(params,type=engine),ensure_ascii=False),encoding='utf-8')
+    try:lancer(t,[python,'-u',ICI/'lancer_visuel.py',req],{'HF_HUB_OFFLINE':'1','TRANSFORMERS_OFFLINE':'1','STUDIO_ANIMATION_EFFECTIVE_LIMIT':str(cap)})
+    finally:req.unlink(missing_ok=True)
+
 def ltx(t, images, prompt, W, H, frames, seed, sortie, audio=None):
     """Sans audio : geste muet (generate). Avec audio : vidéo parlante (a2v) ; l'audio doit couvrir les frames/24 s."""
     choix = t.get('modeles') or GESTION_MODELES.selection()
     video, texte = choix['video'], choix['texte']
     if not video['installe']: raise RuntimeError('Installez ou importez le modèle vidéo dans la page Modèles.')
     if not texte['installe']: raise RuntimeError('Installez l’encodeur Gemma dans la page Modèles.')
+    if video['id']=='ltx23-torch':
+        if texte['id']!='gemma3-torch':raise RuntimeError('LTX PyTorch requiert l’encodeur Gemma natif, et non les poids MLX.')
+        tmp=sortie.with_suffix('.tmp.mp4');raw=sortie.with_name(sortie.stem+'-native.mp4')
+        try:
+            lancer_natif(t,'ltx',dict(modele=video['path'],gemma=texte['path'],prompt=prompt,
+                width=W,height=H,frames=frames,seed=seed,sortie=str(raw),audio=str(audio) if audio else None,
+                images=[[str(img),idx,*force] for img,idx,*force in images]))
+            cmd=['ffmpeg','-v','error','-y','-i',raw]
+            if audio:cmd+=['-i',audio,'-map','0:v:0','-map','1:a:0','-c:a','aac','-shortest']
+            else:cmd+=['-an']
+            lancer(t,cmd+['-c:v','copy','-frames:v',frames,tmp]);tmp.replace(sortie)
+        finally:raw.unlink(missing_ok=True);tmp.unlink(missing_ok=True)
+        return
     cmd = [LTX, 'a2v' if audio else 'generate', '--model', video['path'], '--gemma', texte['path']]
     for img, idx, *force in images: cmd += ['--image', img, idx, force[0] if force else '1.0']
     tmp = sortie.with_suffix('.tmp.mp4')
     cmd += ['--prompt', prompt, '--distilled', '--low-ram', '-H', H, '-W', W, '-f', frames, '--frame-rate', '24', '--seed', seed, '-o', tmp]
     cmd += ['--audio', audio] if audio else ['--no-audio']
-    lancer(t, cmd, {'HF_HOME': str(MODELES / 'huggingface'), 'HF_HUB_OFFLINE': '1', 'PATH': (f"{FFMPEG_BIN}:" if FFMPEG_BIN else "") + os.environ['PATH']})
-    tmp.rename(sortie)
+    lancer(t, cmd, {'HF_HOME': str(MODELES / 'huggingface'), 'HF_HUB_OFFLINE': '1', 'PATH': (f"{FFMPEG_BIN}{os.pathsep}" if FFMPEG_BIN else "") + os.environ['PATH']})
+    tmp.replace(sortie)
 
 def portrait(t):
     """FLUX (mflux) : 1 à 4 variantes en un seul chargement du modèle ; refs = [{dossier, nom, role}]."""
@@ -162,6 +189,13 @@ def portrait(t):
         refs.append((f, ROLES_REF.get(r.get('role'), ROLES_REF['visage'])))
     consigne = ' '.join(f'Reference image {k + 1}: copy {role}.' for k, (_, role) in enumerate(refs)) + ' ' + BASE_PORTRAIT + ' ' + p.get('prompt', '')
     if 'seeds' not in t: t['seeds'] = [secrets.randbelow(10 ** 7) for _ in range(max(1, min(4, int(p.get('nombre', 4)))))]; sauver()   # même tirage à la reprise
+    if m['id']=='flux2-klein4b-torch':
+        t['etape']='Portraits FLUX PyTorch';sauver()
+        lancer_natif(t,'image',dict(modele=m['path'],prompt=consigne.strip(),seeds=t['seeds'],
+            references=[str(f) for f,_ in refs],dossier=str(ICI/'portraits'),id=t['id']))
+        images=sorted(f.name for f in (ICI/'portraits').glob(t['id']+'-*.png'))
+        if not images:raise RuntimeError('Aucun portrait natif produit. Consultez le journal.')
+        t['resultat']=dict(images=images,modele=m['id'],consigne=consigne.strip());return
     flux3 = m['id'].startswith('flux3')
     cmd = [MFLUX / f"mflux-generate-{'flux3' if flux3 else 'flux2'}{'-edit' if refs else ''}", '--model', m['path'], '--prompt', consigne.strip(),
            '--width', 768, '--height', 1200, '--seed', *t['seeds'], '--output', ICI / 'portraits' / f"{t['id']}.png"]   # plusieurs seeds : mflux ajoute _seed_N
@@ -178,6 +212,7 @@ def faire(t):
     if 'modeles' not in t: t['modeles'] = GESTION_MODELES.selection()
     if t['type'].startswith('projet_'):
         projets.executer(t); return
+    if t['type'] == 'conversion': ATELIER_CONVERSION.executer(t); return
     if t['type'] == 'animation': ATELIER_ANIMATION.executer(t); return
     if t['type'] in ('voix','voix_mesure'): ATELIER_VOIX.executer(t); return
     if t['type'] == 'portrait': portrait(t); return
@@ -437,7 +472,7 @@ def fichiers():
     for d in DOSSIERS:
         l = []
         for f in sorted((ICI / d).iterdir(), key=lambda f: -f.stat().st_mtime):
-            if not f.is_file() or f.name.startswith(('.', 'fin-')) or f.suffix in ('.json', '.jpg') or '.tmp.' in f.name or f.name.endswith('-16k.wav') or '-25fps' in f.name: continue
+            if not f.is_file() or f.name.startswith(('.', 'fin-')) or (f.suffix.lower() == '.json' or (f.suffix.lower() == '.jpg' and d not in ('sources', 'portraits', 'references'))) or '.tmp.' in f.name or f.name.endswith('-16k.wav') or '-25fps' in f.name: continue
             m = f.with_suffix('.json'); l.append(dict(nom=f.name, meta=json.loads(m.read_text()) if m.exists() else {},
                                                   apercu=f.with_suffix('.jpg').exists(), duree=round(duree_cache(f), 2) if f.suffix in ('.mp4', '.mov', '.m4v', '.webm', '.wav', '.mp3', '.m4a') else None))
         out[d] = l
@@ -454,25 +489,32 @@ class H(BaseHTTPRequestHandler):
         if u.path == '/': return self.envoyer(ICI / 'index.html', 'text/html; charset=utf-8')
         if u.path == '/api/etat':
             libs = {s.name: lib_avatar(s.name) for s in (ICI / 'sources').iterdir() if not s.name.startswith('.')}
-            return self.json(dict(taches=TACHES[-60:][::-1], fichiers=fichiers(), t7=GESTION_MODELES.selection()['video']['installe'], base_clip=BASE_CLIP,
+            return self.json(dict(plateforme=modeles.plateforme.detecter(),capacites=GESTION_MODELES.capacites(),taches=TACHES[-60:][::-1], fichiers=fichiers(), t7=GESTION_MODELES.selection()['video']['installe'], base_clip=BASE_CLIP,
                                   tons=[dict(cle=k, nom=n, emoji=e, balise=bs[0], geste=GESTES[gs[0]]) for k, n, e, bs, gs in TONS], balises=BALISES, balises_vocales=balises.VOCALES, libs=libs))
         if u.path == '/api/apercu': return self.json(apercus.etat(parse_qs(u.query).get('projet', [''])[0]))
         if u.path == '/api/modeles/voix': return self.json(GESTION_MODELES.voix_catalogue())
         if u.path == '/api/modeles': return self.json(GESTION_MODELES.catalogue())
         if u.path == '/api/projets': return self.json(projets.liste())
         if u.path == '/api/animation': return self.json(ATELIER_ANIMATION.etat())
+        if u.path == '/api/conversion': return self.json(ATELIER_CONVERSION.etat())
         if u.path == '/api/voix': return self.json(ATELIER_VOIX.liste())
+        if re.fullmatch(r'/api/taches/[a-f0-9]{8,12}',u.path):
+            t=next((t for t in TACHES if t['id']==u.path.rsplit('/',1)[1]),None)
+            return self.json(t if t else dict(erreur='Tâche introuvable.'),200 if t else 404)
         if u.path.startswith('/api/journal/'):
             f = ICI / 'taches' / f"{nom_sur(u.path.rsplit('/', 1)[1])}.log"
             txt = f.read_text(errors='replace')[-4000:] if f.exists() else ''
             return self.json(dict(texte=re.sub(r'.*\r', '', txt)))
         if u.path.startswith('/f/'):
             d, _, n = unquote(u.path[3:]).partition('/')
-            if d in DOSSIERS and '/' not in n and n: return self.envoyer(ICI / d / n)
+            if d in DOSSIERS and n and '/' not in n and '\\' not in n and n not in ('.', '..'):
+                folder = (ICI / d).resolve()
+                target = (folder / n).resolve()
+                if target.parent == folder and target.is_file(): return self.envoyer(target)
         self.send_error(404)
     def envoyer(self, f, ctype=None):
         if not f.exists(): return self.send_error(404)
-        ctype = ctype or {'.mp4': 'video/mp4', '.jpg': 'image/jpeg', '.png': 'image/png', '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.json': 'application/json'}.get(f.suffix.lower(), 'application/octet-stream')
+        ctype = ctype or {'.mp4': 'video/mp4', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.avif': 'image/avif', '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.json': 'application/json'}.get(f.suffix.lower(), 'application/octet-stream')
         taille = f.stat().st_size; debut, fin = 0, taille - 1
         r = re.match(r'bytes=(\d*)-(\d*)', self.headers.get('Range', ''))   # lecture vidéo avec avance/retour
         if r and (r[1] or r[2]):
@@ -498,11 +540,25 @@ class H(BaseHTTPRequestHandler):
                 if not 0<size<=1024**3 or Path(name).suffix.lower() not in ('.mp4','.mov','.m4v','.webm'):
                     self.close_connection=True
                     return self.json(dict(erreur='Vidéo MP4, MOV ou WebM de 1 Go maximum requise.'),400)
-            n = nom_sur(q['nom'][0]); (ICI / q['dossier'][0] / n).write_bytes(self.corps())
+            if not q.get('nom', [''])[0]:
+                return self.json(dict(erreur='Nom de fichier requis.'),400)
+            n = nom_sur(q['nom'][0])
+            try:
+                (ICI / q['dossier'][0] / n).write_bytes(self.corps())
+            except (OSError, ValueError):
+                return self.json(dict(erreur="Impossible d’enregistrer le fichier. Vérifiez les droits d’écriture et l’espace disque du dossier Studio Avatar."),500)
             return self.json(dict(nom=n))
         self.send_error(400)
     def do_POST(self):
-        u = urlparse(self.path); d = json.loads(self.corps() or b'{}')
+        u = urlparse(self.path)
+        try:
+            d=json.loads(self.corps() or b'{}')
+            if not isinstance(d,dict):raise ValueError('Objet JSON attendu.')
+        except (ValueError,UnicodeError) as exc:
+            return self.json(dict(erreur='Requête JSON invalide.',erreur_detail=dict(code='json_invalide',champ='requete',message=str(exc),relancable=False,suggestion='Envoyer un objet JSON UTF-8 valide.')),400)
+        if u.path == '/api/conversion':
+            try: return self.json(ATELIER_CONVERSION.demander(d))
+            except (ValueError, OSError, KeyError) as e: return self.json(dict(erreur=str(e)),400)
         if u.path in ('/api/animation','/api/animation/diagnostic'):
             try: return self.json(ATELIER_ANIMATION.demander(d,diagnostic=u.path.endswith('/diagnostic')))
             except (ValueError, OSError, KeyError) as e: return self.json(dict(erreur=str(e)),400)
@@ -516,6 +572,8 @@ class H(BaseHTTPRequestHandler):
                 elif action=='importer-voicestudio': resultat=ATELIER_VOIX.importer_ancien()
                 else: raise ValueError('Action vocale inconnue')
                 return self.json(resultat)
+            except voix_locale.ErreurValidation as e:
+                return self.json(dict(erreur=str(e),erreur_detail=e.detail),422)
             except (ValueError, OSError, KeyError) as e: return self.json(dict(erreur=str(e)),400)
         if u.path == '/api/apercu':
             try: return self.json(apercus.demander(d.get('projet'), d.get('jonction')))
@@ -542,6 +600,9 @@ class H(BaseHTTPRequestHandler):
             except (ValueError, KeyError, TypeError) as e: return self.json(dict(erreur=str(e)), 400)
         if u.path == '/api/tache':
             if d.get('type') not in ('clip', 'pont', 'sequence', 'lipsync', 'video', 'avatar', 'variante', 'portrait'): return self.json(dict(erreur='type inconnu'), 400)
+            try:
+                if d['type']!='sequence':GESTION_MODELES.verifier_role('image' if d['type']=='portrait' else 'lipsync' if d['type']=='lipsync' else 'video')
+            except ValueError as exc:return self.json(dict(erreur=str(exc)),400)
             if d['type'] == 'avatar': nouvelles = preparation(d['params']['source'])
             else: nouvelles = [d]
             with VERROU:
@@ -575,10 +636,12 @@ import modeles
 import apercus
 import voix as voix_locale
 import animation
+import conversion
 apercus.installer(sys.modules[__name__])
 GESTION_MODELES = modeles.Gestionnaire(sys.modules[__name__])
 projets.installer(sys.modules[__name__])
 ATELIER_VOIX = voix_locale.Atelier(sys.modules[__name__])
+ATELIER_CONVERSION = conversion.Atelier(sys.modules[__name__])
 ATELIER_ANIMATION = animation.Atelier(sys.modules[__name__])
 
 if __name__ == '__main__':

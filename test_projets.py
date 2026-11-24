@@ -10,7 +10,7 @@ import projets
 class ProjetsTest(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory(); root=Path(self.tmp.name)
-        self.patches=[patch.object(projets.montage,'analyser',self.analyser),patch.object(studio,'ICI',root),patch.object(studio,'TACHES',[]),patch.object(studio,'sauver',lambda:None),patch.object(studio,'resolution',lambda p:(64,64)),patch.object(studio,'apercu',lambda p:None),patch.object(studio,'ltx',self.ltx),patch.object(studio,'voix',self.voix),patch.object(studio,'musetalk',self.muse)]
+        self.patches=[patch.object(studio.GESTION_MODELES,'verifier_role',lambda role:None),patch.object(projets.montage,'analyser',self.analyser),patch.object(studio,'ICI',root),patch.object(studio,'TACHES',[]),patch.object(studio,'sauver',lambda:None),patch.object(studio,'resolution',lambda p:(64,64)),patch.object(studio,'apercu',lambda p:None),patch.object(studio,'ltx',self.ltx),patch.object(studio,'voix',self.voix),patch.object(studio,'musetalk',self.muse)]
         for p in self.patches:p.start()
         for d in studio.DOSSIERS+['taches']:(root/d).mkdir()
         projets.installer(studio); self.root=root; self.generations=[]; self.voix_count=0; self.audios_a2v=[]; self.muse_count=0; self.voix_seeds=[]
