@@ -18,7 +18,7 @@ class Atelier:
         runtime = Path(c.get('runtime', ''))
         models = []
         for m in c.get('modeles', []):
-            ok = all(Path(m.get(k, '')).is_file() for k in ('poids', 'index')) and (runtime / '.venv/bin/python').is_file() and (runtime / 'infer/cli.py').is_file()
+            ok = all(Path(m.get(k, '')).is_file() for k in ('poids', 'index')) and (runtime / '.venv' / ('Scripts/python.exe' if os.name=='nt' else 'bin/python')).is_file() and (runtime / 'infer/cli.py').is_file()
             models.append(dict(id=m['id'], nom=m['nom'], disponible=ok))
         return dict(modeles=models)
 
@@ -59,7 +59,7 @@ class Atelier:
             self.s.lancer(t, ['ffmpeg','-v','error','-y','-i',src,'-vn','-ac','1','-ar','22050',extrait])
             t['etape'] = 'Conversion RVC · ' + m['nom']; self.s.sauver()
             runtime = Path(m['runtime'])
-            self.s.lancer(t, [runtime/'.venv/bin/python','-u',root/'lancer_conversion.py',runtime,m['poids'],m['index'],extrait,temp,str(p['pitch'])], env={'STUDIO_TTS_EFFECTIVE_LIMIT':str(12*1024**3)})
+            self.s.lancer(t, [runtime/'.venv'/('Scripts/python.exe' if os.name=='nt' else 'bin/python'),'-u',root/'lancer_conversion.py',runtime,m['poids'],m['index'],extrait,temp,str(p['pitch'])], env={'STUDIO_TTS_EFFECTIVE_LIMIT':str(12*1024**3)})
             if not temp.is_file() or temp.stat().st_size < 100: raise RuntimeError('RVC n’a pas produit d’audio.')
             t['etape'] = 'Finalisation'; self.s.sauver()
             self.s.lancer(t, ['ffmpeg','-v','error','-y','-i',temp,'-af',f'apad,atrim=duration={self.s.duree(src)}',out])

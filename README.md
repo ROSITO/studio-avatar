@@ -152,7 +152,7 @@ unmanaged runtimes are preserved. `installer.bat --plan` reports the plan withou
 installing anything. On other platforms, use `python installer.py --plan`.
 
 - Apple Silicon: MLX voice runtime; experimental Wan animation is an explicit
-  `python installer.py --engine animation` option. LTX remains a separate install.
+  `python installer.py --engine animation` option. LTX-MLX remains a separate install on Mac.
 - Windows/Linux x64: OmniVoice and official Qwen-TTS with PyTorch. Automatic CUDA selection requires
   NVIDIA, at least 8 GiB VRAM and driver 570+ for the pinned CUDA 12.8 recipe.
   Otherwise CPU is selected, which can be slow. `installer.bat` prepares both voice
@@ -162,9 +162,16 @@ installing anything. On other platforms, use `python installer.py --plan`.
 
 `--engine interface` checks only the interface prerequisites. `--engine omnivoice
 --device cpu` explicitly selects CPU. GPU backends are checked after installation;
-installation is not a full model inference test. No video generation engine is
-currently provided for Windows. A Windows laptop with 32 GB RAM and possibly
-4 GB VRAM should use the interface and CPU voice option pending hardware testing.
+installation is not a full model inference test. Native LTX video requires a
+NVIDIA Ampere-or-newer GPU with at least 8 GiB VRAM, driver 570+, and 32 GiB RAM.
+Native FLUX portraits require at least 12 GiB VRAM and the same RAM/driver limits.
+These are conservative admission rules, not performance or quality guarantees.
+Small hardware reservations are allowed when identifying nominal 32 GB RAM and
+8/12 GB VRAM configurations.
+On suitable hardware automatic setup also prepares `.venv-ltx` and `.venv-image`.
+Explicit options are `--engine ltx` and `--engine image`; CPU mode is refused for
+these two engines. A Windows laptop with 32 GB RAM and 4 GB VRAM receives the
+interface and CPU voice engines, without multi-gigabyte incompatible visual downloads.
 
 ### Windows
 
@@ -178,9 +185,9 @@ is not automatically loaded. Paths containing spaces are supported by the launch
 
 The interface and local media editing can run on Windows. LTX-2-MLX, mflux and MLX
 speech generation require Apple Silicon and do not become Windows compatible
-through this launcher. A complete Windows GPU generation pipeline is not provided.
-OmniVoice has a separate PyTorch installer (Python 3.12/3.13); its full Windows
-inference has not been validated here.
+through this launcher. Compatible Windows NVIDIA systems use separate native
+PyTorch LTX-2.3 and FLUX.2 Klein pipelines, not the MLX weights. Full Windows GPU
+inference and visual quality still require validation on the target hardware.
 
 ## Configure generation engines
 
@@ -756,13 +763,26 @@ an optional externally configured RVC runtime; see [CONVERSION.md](CONVERSION.md
 The server exposes the same detected OS, CPU architecture, RAM and NVIDIA VRAM
 to the UI and installer. Model cards identify the backend and proposed device.
 Voice generation, animation and timeline task admission use that compatibility
-information. LTX-MLX/Gemma-MLX, mflux portraits and the Wan MPS adapter still have
-no Windows runtime in this project; downloading native upstream video weights
-alone would not make those adapters work. Such downloads and generation requests
-are refused rather than queued. Existing media assembly remains available.
+information. LTX uses the pinned official Lightricks pipeline on compatible
+Windows/Linux CUDA machines, with disk offload, image anchors and audio conditioning.
+It requires the native LTX checkpoint, distilled LoRA, spatial upscaler and native
+Gemma encoder; their weights total many tens of gigabytes and Google license access
+may be required. The original speech is muxed back without regeneration. FLUX uses
+Diffusers with sequential offload and supports the same photo references. Mac keeps
+LTX-MLX/mflux. The experimental Wan MPS adapter remains Mac-only. Unsupported
+hardware and incompatible model/runtime combinations are refused before downloads
+or queued generation. Existing media assembly remains available.
 
 Native Qwen-TTS loads the official local Base checkpoints with PyTorch SDPA on
 CPU/CUDA, preserving the reference/transcript and running under the voice memory
 supervisor. No FlashAttention, MLX or model download is invoked by this worker.
 The adapter and Windows dependency resolution are tested; full Windows inference
 still requires a real hardware test. See [upstream Qwen-TTS](https://github.com/QwenLM/Qwen3-TTS).
+
+The native visual adapters are experimental: unit/contract tests and Windows
+package resolution do not establish real-model rendering speed or visual fidelity.
+Workers load local weights offline and run under both an allocator ceiling and
+the independent process memory watchdog. `STUDIO_VISUAL_MAX_RAM_GB` defaults to
+16 GiB, capped at half physical RAM, with a 4 GiB system admission reserve.
+Optional existing runtimes can be selected with `STUDIO_LTX_PYTHON` and
+`STUDIO_IMAGE_PYTHON`. FLUX results and final native clips replace files atomically.

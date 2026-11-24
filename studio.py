@@ -137,19 +137,46 @@ def lancer(t, cmd, env=None):
         raise RuntimeError(memoire.decrire_arret((ICI/'taches'/f"{t['id']}.log").read_text(errors='replace')[-8000:]))
     if code: raise RuntimeError(f'commande terminée avec le code {code} (voir le journal)')
 
+def lancer_natif(t,engine,params):
+    import memoire
+    nom='.venv-ltx' if engine=='ltx' else '.venv-image'
+    variable='STUDIO_LTX_PYTHON' if engine=='ltx' else 'STUDIO_IMAGE_PYTHON'
+    python=Path(os.environ.get(variable,str(ICI/nom/('Scripts/python.exe' if os.name=='nt' else 'bin/python')))).expanduser()
+    if not python.is_file():raise RuntimeError('Runtime natif absent : relancez installer.bat ou python installer.py --engine '+engine)
+    asked=float(os.environ.get('STUDIO_VISUAL_MAX_RAM_GB','16'))
+    if not math.isfinite(asked) or asked<2:raise ValueError('Budget visuel invalide (au moins 2 Gio).')
+    cap=int(min(asked*memoire.GIB,memoire.physique()/2))
+    req=ICI/'taches'/(t['id']+'-'+engine+'-requete.json');req.parent.mkdir(exist_ok=True)
+    req.write_text(json.dumps(dict(params,type=engine),ensure_ascii=False),encoding='utf-8')
+    try:lancer(t,[python,'-u',ICI/'lancer_visuel.py',req],{'HF_HUB_OFFLINE':'1','TRANSFORMERS_OFFLINE':'1','STUDIO_ANIMATION_EFFECTIVE_LIMIT':str(cap)})
+    finally:req.unlink(missing_ok=True)
+
 def ltx(t, images, prompt, W, H, frames, seed, sortie, audio=None):
     """Sans audio : geste muet (generate). Avec audio : vidéo parlante (a2v) ; l'audio doit couvrir les frames/24 s."""
     choix = t.get('modeles') or GESTION_MODELES.selection()
     video, texte = choix['video'], choix['texte']
     if not video['installe']: raise RuntimeError('Installez ou importez le modèle vidéo dans la page Modèles.')
     if not texte['installe']: raise RuntimeError('Installez l’encodeur Gemma dans la page Modèles.')
+    if video['id']=='ltx23-torch':
+        if texte['id']!='gemma3-torch':raise RuntimeError('LTX PyTorch requiert l’encodeur Gemma natif, et non les poids MLX.')
+        tmp=sortie.with_suffix('.tmp.mp4');raw=sortie.with_name(sortie.stem+'-native.mp4')
+        try:
+            lancer_natif(t,'ltx',dict(modele=video['path'],gemma=texte['path'],prompt=prompt,
+                width=W,height=H,frames=frames,seed=seed,sortie=str(raw),audio=str(audio) if audio else None,
+                images=[[str(img),idx,*force] for img,idx,*force in images]))
+            cmd=['ffmpeg','-v','error','-y','-i',raw]
+            if audio:cmd+=['-i',audio,'-map','0:v:0','-map','1:a:0','-c:a','aac','-shortest']
+            else:cmd+=['-an']
+            lancer(t,cmd+['-c:v','copy','-frames:v',frames,tmp]);tmp.replace(sortie)
+        finally:raw.unlink(missing_ok=True);tmp.unlink(missing_ok=True)
+        return
     cmd = [LTX, 'a2v' if audio else 'generate', '--model', video['path'], '--gemma', texte['path']]
     for img, idx, *force in images: cmd += ['--image', img, idx, force[0] if force else '1.0']
     tmp = sortie.with_suffix('.tmp.mp4')
     cmd += ['--prompt', prompt, '--distilled', '--low-ram', '-H', H, '-W', W, '-f', frames, '--frame-rate', '24', '--seed', seed, '-o', tmp]
     cmd += ['--audio', audio] if audio else ['--no-audio']
-    lancer(t, cmd, {'HF_HOME': str(MODELES / 'huggingface'), 'HF_HUB_OFFLINE': '1', 'PATH': (f"{FFMPEG_BIN}:" if FFMPEG_BIN else "") + os.environ['PATH']})
-    tmp.rename(sortie)
+    lancer(t, cmd, {'HF_HOME': str(MODELES / 'huggingface'), 'HF_HUB_OFFLINE': '1', 'PATH': (f"{FFMPEG_BIN}{os.pathsep}" if FFMPEG_BIN else "") + os.environ['PATH']})
+    tmp.replace(sortie)
 
 def portrait(t):
     """FLUX (mflux) : 1 à 4 variantes en un seul chargement du modèle ; refs = [{dossier, nom, role}]."""
@@ -162,6 +189,13 @@ def portrait(t):
         refs.append((f, ROLES_REF.get(r.get('role'), ROLES_REF['visage'])))
     consigne = ' '.join(f'Reference image {k + 1}: copy {role}.' for k, (_, role) in enumerate(refs)) + ' ' + BASE_PORTRAIT + ' ' + p.get('prompt', '')
     if 'seeds' not in t: t['seeds'] = [secrets.randbelow(10 ** 7) for _ in range(max(1, min(4, int(p.get('nombre', 4)))))]; sauver()   # même tirage à la reprise
+    if m['id']=='flux2-klein4b-torch':
+        t['etape']='Portraits FLUX PyTorch';sauver()
+        lancer_natif(t,'image',dict(modele=m['path'],prompt=consigne.strip(),seeds=t['seeds'],
+            references=[str(f) for f,_ in refs],dossier=str(ICI/'portraits'),id=t['id']))
+        images=sorted(f.name for f in (ICI/'portraits').glob(t['id']+'-*.png'))
+        if not images:raise RuntimeError('Aucun portrait natif produit. Consultez le journal.')
+        t['resultat']=dict(images=images,modele=m['id'],consigne=consigne.strip());return
     flux3 = m['id'].startswith('flux3')
     cmd = [MFLUX / f"mflux-generate-{'flux3' if flux3 else 'flux2'}{'-edit' if refs else ''}", '--model', m['path'], '--prompt', consigne.strip(),
            '--width', 768, '--height', 1200, '--seed', *t['seeds'], '--output', ICI / 'portraits' / f"{t['id']}.png"]   # plusieurs seeds : mflux ajoute _seed_N

@@ -6,5 +6,5 @@ vm.runInContext(code,context);
 assert.equal(context.verifierRole('video'),false);
 assert.match(alerts[0],/Windows/);
 assert.equal(context.verifierRole('synthese'),true);
-context.afficherPlateforme();assert.match(node.textContent,/Windows/);assert.match(node.textContent,/32 Go RAM/);assert.match(node.textContent,/Aucun moteur/);
+context.afficherPlateforme();assert.match(node.textContent,/Windows/);assert.match(node.textContent,/32 Go RAM/);assert.match(node.textContent,/indisponible/);
 console.log('Interface : système détecté, voix disponibles et génération vidéo indisponible expliquée.');

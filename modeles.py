@@ -62,6 +62,19 @@ CATALOGUE += [dict(id=mid, nom=nom, role='synthese', ram=ram, backend='qwen-torc
         ('qwen3-tts-17b-torch','Qwen3-TTS 1.7B · PyTorch','Qwen/Qwen3-TTS-12Hz-1.7B-Base',16)]]
 
 
+LTX_NATIVE_FILES=['ltx-2.3-22b-dev.safetensors','ltx-2.3-22b-distilled-lora-384-1.1.safetensors','ltx-2.3-spatial-upscaler-x2-1.1.safetensors']
+GEMMA_NATIVE_FILES=['config.json','model.safetensors.index.json','tokenizer.json']+['model-%05d-of-00005.safetensors'%i for i in range(1,6)]
+CATALOGUE += [dict(id='ltx23-torch',nom='LTX-2.3 · PyTorch CUDA',role='video',ram=32,backend='ltx-torch',
+    description='Intégration expérimentale du moteur officiel : clips, transitions et vidéo parlante. Lecture des poids sur disque. Licence LTX-2 Community.',
+    required=LTX_NATIVE_FILES,sources=[dict(repo='Lightricks/LTX-2.3',include=LTX_NATIVE_FILES,prefix='')]),
+    dict(id='gemma3-torch',nom='Gemma 3 12B · PyTorch',role='texte',ram=32,backend='ltx-torch',
+    description='Encodeur natif pour LTX PyTorch. Licence Google et accès Hugging Face à accepter.',
+    required=GEMMA_NATIVE_FILES,sources=[dict(repo='google/gemma-3-12b-it-qat-q4_0-unquantized',include=['*.json','*.model','*.safetensors'],prefix='')]),
+    dict(id='flux2-klein4b-torch',nom='FLUX.2 Klein 4B · PyTorch',role='image',ram=32,backend='flux-torch',
+    description='Portraits et édition avec références. Intégration Diffusers expérimentale, offload CPU. Apache 2.0.',
+    required=['model_index.json','transformer/diffusion_pytorch_model.safetensors','vae/diffusion_pytorch_model.safetensors','text_encoder/model.safetensors.index.json','tokenizer/tokenizer.json'],
+    sources=[dict(repo='black-forest-labs/FLUX.2-klein-4B',include=['model_index.json','scheduler/*','text_encoder/*','tokenizer/*','transformer/*','vae/*','LICENSE*'],prefix='')])]
+
 def backend(e):
     if e.get('backend'):return e['backend']
     if e['id']=='omnivoice':return 'omnivoice-torch'
@@ -72,10 +85,9 @@ def backend(e):
 def compatibilite(e):
     host=plateforme.detecter(); moteur=backend(e)
     compatible=plateforme.backend_compatible(moteur,host)
-    raison='' if compatible else ('Le moteur Qwen PyTorch intégré est prévu pour Windows/Linux x64.' if moteur=='qwen-torch' else
-        'Le moteur intégré pour ce modèle nécessite macOS Apple Silicon ; aucun moteur compatible n’est fourni pour cette machine.')
+    raison=plateforme.raison_backend(moteur,host)
     return dict(compatible=compatible,raison_incompatibilite=raison,backend=moteur,
-                appareil=plateforme.appareil_torch(host) if moteur in ('qwen-torch','omnivoice-torch') else 'mps' if compatible else None)
+                appareil=plateforme.appareil_torch(host) if moteur in ('qwen-torch','omnivoice-torch','ltx-torch','flux-torch') else 'mps' if compatible else None)
 
 
 class SansFuiteToken(urllib.request.HTTPRedirectHandler):
@@ -119,11 +131,19 @@ class Gestionnaire:
         self.config_path=studio.ICI/'modeles.json'; self.etat_path=studio.ICI/'.modeles-etat.json'
         self.config=lire_json(self.config_path,dict(selection={'video':'ltx23-q4','texte':'gemma3','lipsync':'musetalk15'},locaux=[]))
         self.config['selection'].setdefault('image','flux2-klein4b')
-        default_voice = 'qwen3-tts-mlx' if platform.system() == 'Darwin' and platform.machine().lower() == 'arm64' else 'omnivoice'
+        host=plateforme.detecter()
+        default_voice = 'qwen3-tts-mlx' if host['os']=='Darwin' and host['arch']=='arm64' else 'omnivoice'
         self.config['selection'].setdefault('synthese', default_voice)
         if not compatibilite(self.entry(self.config['selection']['synthese']))['compatible']:
             self.config['selection']['synthese'] = default_voice
             if self.config_path.exists(): atomique(self.config_path, self.config)
+        for role,default in [('video','ltx23-q4'),('texte','gemma3'),('image','flux2-klein4b')]:
+            self.config['selection'].setdefault(role,default)
+            if not compatibilite(self.entry(self.config['selection'][role]))['compatible']:
+                candidat=next((e for e in self.entries() if e['role']==role and compatibilite(e)['compatible']),None)
+                if candidat:
+                    self.config['selection'][role]=candidat['id']
+                    if self.config_path.exists():atomique(self.config_path,self.config)
         self.etat=lire_json(self.etat_path,{})
         if self.etat.get('statut') in ('analyse','telechargement','verification'): self.etat['statut']='interrompu'
         self.plans=lire_json(studio.ICI/'.modeles-plans.json',{})
@@ -169,14 +189,14 @@ class Gestionnaire:
             for e in self.entries():
                 p=self.path(e); plan=self.plans.get(e['id'])
                 entries.append(dict(id=e['id'],nom=e['nom'],role=e['role'],ram=e['ram'],description=e['description'],path=str(p),installe=self.valid(e,p),actif=self.config['selection'].get(e['role'])==e['id'],octets=plan.get('total') if plan else None,sources=[s['repo'] for s in e.get('sources',[])],local=bool(e.get('path')),**compatibilite(e)))
-            return dict(plateforme={**plateforme.detecter(),'architecture':platform.machine()},catalogue=entries,selection=self.selection(),capacites=self.capacites(),transfert=self.etat,voix_url=self.s.VOICESTUDIO,moteurs=dict(ltx=bool(shutil.which(str(self.s.LTX))),musetalk=self.muse_root.is_dir(),mflux=bool(getattr(self.s,'MFLUX',None) and (self.s.MFLUX/'mflux-generate-flux2').is_file())),dossier=str(self.s.MODELES))
+            return dict(plateforme={**plateforme.detecter(),'architecture':plateforme.detecter()['arch']},catalogue=entries,selection=self.selection(),capacites=self.capacites(),transfert=self.etat,voix_url=self.s.VOICESTUDIO,moteurs=dict(ltx=bool(shutil.which(str(self.s.LTX))),musetalk=self.muse_root.is_dir(),mflux=bool(getattr(self.s,'MFLUX',None) and (self.s.MFLUX/'mflux-generate-flux2').is_file())),dossier=str(self.s.MODELES))
     def capacites(self):
         result={}
         for role in ('video','image','synthese','animation','lipsync'):
             entries=[e for e in self.entries() if e['role']==role]
             possibles=[e['id'] for e in entries if compatibilite(e)['compatible']]
             result[role]=dict(compatible=bool(possibles),modeles=possibles,
-                raison='' if possibles else compatibilite(entries[0])['raison_incompatibilite'])
+                raison='' if possibles else compatibilite(next((e for e in entries if backend(e) in ('ltx-torch','flux-torch','qwen-torch')),entries[0]))['raison_incompatibilite'])
         return result
     def verifier_role(self,role):
         capacite=self.capacites()[role]

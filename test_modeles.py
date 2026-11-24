@@ -110,8 +110,8 @@ class ModelesTest(unittest.TestCase):
 
     def test_apple_silicon_keeps_its_catalogue_and_default(self):
         data=self.m.catalogue()
-        self.assertTrue(all(e['compatible'] for e in data['catalogue'] if e['backend']!='qwen-torch'))
-        self.assertTrue(all(not e['compatible'] for e in data['catalogue'] if e['backend']=='qwen-torch'))
+        self.assertTrue(all(e['compatible'] for e in data['catalogue'] if e['backend'] not in ('qwen-torch','ltx-torch','flux-torch')))
+        self.assertTrue(all(not e['compatible'] for e in data['catalogue'] if e['backend'] in ('qwen-torch','ltx-torch','flux-torch')))
         self.assertEqual(data['selection']['synthese']['id'],'qwen3-tts-mlx')
         with patch.object(modeles.platform,'system',return_value='Linux'), patch.object(modeles.platform,'machine',return_value='aarch64'):
             self.assertFalse(modeles.compatibilite(self.m.entry('omnivoice'))['compatible'])
