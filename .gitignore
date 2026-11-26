@@ -47,3 +47,8 @@ venv/
 
 # Windows bootstrap: local interpreter selection
 /.studio-python.txt
+
+# Atomic private state may remain after an interrupted write.
+/taches.tmp
+/modeles.tmp
+/.modeles-*.tmp

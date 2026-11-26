@@ -87,6 +87,57 @@ class ProjetsTest(unittest.TestCase):
             with self.assertRaises(RuntimeError):projets.executer(t)
         t['etat']='erreur'; p=projets.lire(p['id']); self.assertTrue(p['blocs'][0]['audio']); self.assertFalse(p['blocs'][0]['clip'])
         projets.lancer(p['id'],dict(action='clip',element=b['id'])); self.drain(); self.assertEqual(self.voix_count,1)
+
+    def test_manquants_regenere_un_clip_absent_et_ses_ponts(self):
+        pid=self.creer()['id']
+        projets.lancer(pid,dict(action='automatique')); self.drain()
+        p=projets.lire(pid)
+        gauche, milieu, droite=p['blocs']
+        (self.root/'clips'/milieu['clip']).unlink()
+        with self.assertRaisesRegex(ValueError,'restent à générer'):
+            projets.lancer(pid,dict(action='export'))
+        avant=len(self.generations)
+        projets.lancer(pid,dict(action='manquants')); self.drain()
+        actuel=projets.lire(pid)
+        self.assertEqual(len(self.generations)-avant,3)
+        self.assertEqual([actuel['blocs'][i]['clip'] for i in (0,2)],[gauche['clip'],droite['clip']])
+        self.assertNotEqual(actuel['blocs'][1]['clip'],milieu['clip'])
+        self.assertEqual(actuel['blocs'][1]['audio'],milieu['audio'])
+        self.assertEqual(actuel['export'],p['export'])
+        self.assertTrue((self.root/'videos'/p['export']['fichier']).is_file())
+
+    def test_automatique_recupere_un_audio_et_un_raccord_absents(self):
+        pid=self.creer()['id']
+        projets.lancer(pid,dict(action='automatique')); self.drain()
+        p=projets.lire(pid)
+        (self.root/'audios'/p['blocs'][0]['audio']).unlink()
+        (self.root/'ponts'/p['transitions'][1]['clip']).unlink()
+        projets.lancer(pid,dict(action='automatique')); self.drain()
+        actuel=projets.lire(pid)
+        self.assertEqual(self.voix_count,4)
+        self.assertTrue(all(projets.bloc_pret(b) for b in actuel['blocs']))
+        self.assertTrue(all(projets.pont_pret(actuel,b) for b in actuel['transitions']))
+        self.assertNotEqual(actuel['export']['fichier'],p['export']['fichier'])
+        self.assertTrue((self.root/'videos'/p['export']['fichier']).is_file())
+
+    def test_projet_musetalk_refuse_avant_calcul_et_export_a2v_reste_disponible(self):
+        p=self.creer(); pid=p['id']
+        projets.modifier(pid,dict(action='moteur',moteur='musetalk'))
+        def verifier(role):
+            if role=='lipsync': raise ValueError('MuseTalk indisponible')
+        with patch.object(studio.GESTION_MODELES,'verifier_role',side_effect=verifier):
+            for action in ('automatique','export'):
+                with self.assertRaisesRegex(ValueError,'MuseTalk indisponible'):
+                    projets.lancer(pid,dict(action=action))
+            self.assertFalse(studio.TACHES)
+            projets.modifier(pid,dict(action='moteur',moteur='a2v'))
+            with self.assertRaisesRegex(ValueError,'MuseTalk indisponible'):
+                projets.modifier(pid,dict(action='moteur',moteur='musetalk'))
+        projets.lancer(pid,dict(action='manquants')); self.drain()
+        with patch.object(studio.GESTION_MODELES,'verifier_role',side_effect=ValueError('Aucun moteur de génération')):
+            projets.lancer(pid,dict(action='export')); self.drain()
+        self.assertEqual(self.muse_count,0)
+        self.assertTrue(projets.lire(pid)['export'])
     def test_refaire_voix(self):
         p=self.creer(); b=p['blocs'][1]
         projets.lancer(p['id'],dict(action='clip',element=b['id'])); self.drain(); p=projets.lire(p['id'])
@@ -140,7 +191,7 @@ class ProjetsTest(unittest.TestCase):
         self.assertEqual(projets.decouper(long),[long])
     def test_controle_visage_optionnel(self):
         p=self.creer(); b=p['blocs'][0]; scores=iter([.3,.25,.1])
-        with patch.object(projets,'visage',lambda t,v:next(scores)) as _:
+        with patch.object(projets,'visage',lambda t,v:next(scores)), patch.object(projets,'verifier_controle_visage'):
             projets.lancer(p['id'],dict(action='clip',element=b['id'])); self.drain()
             self.assertEqual(len(self.generations),1)   # décoché par défaut : un seul essai
             projets.modifier(p['id'],dict(action='controle_visage',actif=True)); p=projets.lire(p['id'])
@@ -148,5 +199,38 @@ class ProjetsTest(unittest.TestCase):
             projets.lancer(p['id'],dict(action='clip',element=b['id'])); self.drain(); p=projets.lire(p['id'])
         self.assertEqual(len(self.generations),4); self.assertEqual(p['blocs'][0]['visage'],.1)
         self.assertEqual(p['blocs'][0]['seed'],self.generations[-1][3])
+
+    def test_controle_visage_sans_opencv_refuse_avant_file_et_apres_reprise(self):
+        p=self.creer(); pid=p['id']; element=p['blocs'][0]['id']
+        p=projets.modifier(pid,dict(action='controle_visage',actif=True))
+        absence_opencv=subprocess.CalledProcessError(1,['python','-c','import cv2'])
+        with patch.object(studio.subprocess,'run',side_effect=absence_opencv) as run:
+            for action in ('clip','manquants','automatique'):
+                with self.assertRaisesRegex(ValueError,'OpenCV .* est requis'):
+                    projets.lancer(pid,dict(action=action,element=element))
+            self.assertEqual(len(studio.TACHES),0)
+            self.assertEqual(projets.lire(pid)['revision'],p['revision'])
+            run.assert_called_with([str(studio.CV_PY),'-c','import cv2'],capture_output=True,check=True,timeout=15)
+            task=dict(id='interrompu',type='projet_auto',params=dict(projet=pid,element=None))
+            with self.assertRaisesRegex(ValueError,'OpenCV .* est requis'):
+                projets.executer(task)
+            self.assertEqual(self.generations,[])
+            self.assertEqual(self.voix_count,0)
+
+    def test_controle_visage_distingue_absence_de_visage_et_echec_worker(self):
+        t=dict(id='visage')
+        video=self.root/'clips'/'clip.mp4'
+        def reponse(code=0,stdout='',stderr=''):
+            return subprocess.CompletedProcess([],code,stdout,stderr)
+        with patch.object(studio.subprocess,'run',return_value=reponse(stdout='{"face":0,"images":12,"decalage":0}')):
+            self.assertEqual(projets.visage(t,video),9)
+        for resultat, erreur in [
+            (reponse(1,stderr='ModuleNotFoundError: cv2'),'Échec du contrôle du visage.*cv2'),
+            (reponse(stdout=''),'résultat invalide'),
+            (reponse(stdout='{"face":0,"images":0,"decalage":0}'),'aucune image'),
+        ]:
+            with patch.object(studio.subprocess,'run',return_value=resultat):
+                with self.assertRaisesRegex(RuntimeError,erreur):
+                    projets.visage(t,video)
 
 if __name__=='__main__': unittest.main()

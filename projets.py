@@ -37,12 +37,33 @@ def actif(pid):
 def seed_aleatoire(): return secrets.randbelow(2**31)
 MOTEURS=('a2v','musetalk')
 def moteur(p): return p.get('moteur','musetalk')   # anciens projets : gestes bouche fermée + MuseTalk
+def verifier_controle_visage(p):
+    if not p.get('controle_visage'): return
+    erreur=f'Contrôle du visage indisponible : OpenCV (cv2) est requis dans {S.CV_PY}.'
+    try:
+        S.subprocess.run([str(S.CV_PY),'-c','import cv2'],capture_output=True,check=True,timeout=15)
+    except (OSError,S.subprocess.SubprocessError) as exc:
+        raise ValueError(erreur) from exc
+
 def visage(t,video):
-    """Décalage max du visage (part de sa largeur) ; 9 si aucun visage de face."""
-    r=S.subprocess.run([str(S.CV_PY),str(S.ICI/'visage.py'),str(video)],capture_output=True,text=True)
-    v=json.loads(r.stdout or '{"decalage": 9}')
+    """Décalage max du visage, rapporté à sa largeur. 9 si aucun visage de face."""
+    try:
+        r=S.subprocess.run([str(S.CV_PY),str(S.ICI/'visage.py'),str(video)],capture_output=True,text=True)
+    except OSError as exc:
+        raise RuntimeError(f'Impossible de lancer le contrôle du visage dans {S.CV_PY}.') from exc
+    if r.returncode:
+        detail=r.stderr.strip().splitlines()
+        raise RuntimeError('Échec du contrôle du visage : '+(detail[-1] if detail else f'code {r.returncode}'))
+    try:
+        v=json.loads(r.stdout)
+        score, face, images=v['decalage'],v['face'],v['images']
+        if type(images) is not int or images<0 or not 0<=face<=1 or not math.isfinite(score) or score<0:
+            raise ValueError('Mesures invalides')
+    except (ValueError,KeyError,TypeError) as exc:
+        raise RuntimeError('Le contrôle du visage a renvoyé un résultat invalide.') from exc
+    if not images: raise RuntimeError('Le contrôle du visage n’a décodé aucune image.')
     with open(S.ICI/'taches'/f"{t['id']}.log",'a') as log: log.write(f'contrôle visage {video.name} : {v}\n')
-    return v['decalage']
+    return score if face else 9
 def segment(t,src,debut,duree,out):
     """Extrait de voix complété de silence : a2v exige un audio couvrant toute la vidéo."""
     S.lancer(t,['ffmpeg','-v','error','-y','-ss',f'{debut:.6f}','-i',src,'-af','apad','-t',f'{duree+.2:.6f}','-ar','44100','-ac','1',out])
@@ -53,11 +74,16 @@ def bloc(ton='neutre', texte=''):
 def relier(p):
     anciens = {(x['gauche'],x['droite']):x for x in p.get('transitions',[])}
     p['transitions'] = [anciens.get((a['id'],b['id'])) or dict(id=ident(),gauche=a['id'],droite=b['id'],duree=0.5,seed=seed_aleatoire(),seed_mode='auto',revision=0,clip=None) for a,b in zip(p['blocs'],p['blocs'][1:])]
-def courant(b): return bool(b.get('clip') and b.get('rendu_revision') == b['revision'])
+def courant(b,dossier='clips'):
+    return bool(b.get('clip') and b.get('rendu_revision') == b['revision'] and (S.ICI/dossier/b['clip']).is_file())
+def audio_present(b):
+    return bool(b.get('audio') and (S.ICI/'audios'/b['audio']).is_file())
+def bloc_pret(b):
+    return courant(b) and audio_present(b)
 def pont_pret(p,b):
     a,z = [next(x for x in p['blocs'] if x['id']==b[k]) for k in ('gauche','droite')]
     r=montage.raccord(p,b)
-    return courant(a) and courant(z) and courant(b) and b.get('extremites') == [a['clip'],z['clip']] and b.get('raccord_version')==montage.VERSION and b.get('coupe_frame')==r['coupe'] and b.get('frames_cible')==r['frames']
+    return courant(a) and courant(z) and courant(b,'ponts') and b.get('extremites') == [a['clip'],z['clip']] and b.get('raccord_version')==montage.VERSION and b.get('coupe_frame')==r['coupe'] and b.get('frames_cible')==r['frames']
 def decouper(texte):
     """Groupe les phrases d’un TAG en morceaux d’au plus BLOC_MAX s estimées ; une phrase n’est jamais coupée."""
     import re
@@ -68,10 +94,11 @@ def decouper(texte):
     return morceaux
 def creer(d):
     avatar=d.get('avatar','')
-    if '/' in avatar or not (S.ICI/'sources'/avatar).is_file(): raise ValueError('Photo introuvable')
-    if d.get('audio') and ('/' in d['audio'] or not (S.ICI/'audios'/d['audio']).is_file()): raise ValueError('Audio introuvable')
+    if not S.chemin_media('sources',avatar).is_file(): raise ValueError('Photo introuvable')
+    if d.get('audio') and not S.chemin_media('audios',d['audio']).is_file(): raise ValueError('Audio introuvable')
     if not d.get('audio') and not (d.get('voix') and d.get('texte','').strip()): raise ValueError('Écrivez un texte et choisissez une voix, ou importez un audio.')
     p=dict(id=ident(),nom=d.get('nom') or 'Nouveau projet',avatar=avatar,voix=d.get('voix'),langue=d.get('langue','fr'),audio_source=d.get('audio'),moteur=d.get('moteur') if d.get('moteur') in MOTEURS else 'a2v',blocs=[],transitions=[],revision=0,export=None,montage_version=montage.VERSION)
+    if moteur(p)=='musetalk': S.GESTION_MODELES.verifier_role('lipsync')
     for segment in balises.blocs(d.get('texte',''),S.BALISES):
         p['blocs'] += [bloc(segment['ton'],m) for m in decouper(segment['texte'])]
     if not p['blocs']: p['blocs']=[bloc()]
@@ -96,6 +123,7 @@ def modifier(pid,d):
         elif action=='moteur':
             if d.get('moteur') not in MOTEURS: raise ValueError('Moteur inconnu')
             if d['moteur']!=moteur(p):
+                if d['moteur']=='musetalk': S.GESTION_MODELES.verifier_role('lipsync')
                 p['moteur']=d['moteur']
                 for x in p['blocs']+p['transitions']: x['revision']+=1   # rushs à refaire avec l’autre moteur
         else:
@@ -141,29 +169,33 @@ def ajouter_tache(p,genre,e=None):
 def lancer(pid,d):
     with VERROU:
         p=lire(pid); action=d['action']
+        if action in ('automatique','export') and moteur(p)!='a2v':S.GESTION_MODELES.verifier_role('lipsync')
         if action in ('automatique','manquants','clip','pont'):S.GESTION_MODELES.verifier_role('video')
-        if action=='export' and moteur(p)!='a2v':S.GESTION_MODELES.verifier_role('lipsync')
         if action=='automatique':
             if actif(pid): return p
             if not p['audio_source'] and (not p.get('voix') or any(not b['texte'].strip() for b in p['blocs'])): raise ValueError('Complétez le texte de tous les blocs et choisissez une voix avant le lancement automatique.')
+            if any(not bloc_pret(b) for b in p['blocs']): verifier_controle_visage(p)
             ajouter_tache(p,'auto')
         elif action=='manquants':
+            manquants={b['id'] for b in p['blocs'] if not bloc_pret(b)}
+            if manquants: verifier_controle_visage(p)
             for b in p['blocs']:
-                if not courant(b): ajouter_tache(p,'clip',b)
+                if b['id'] in manquants: ajouter_tache(p,'clip',b)
             # Les transitions attendent leurs deux clips dans la même file séquentielle.
             for b in p['transitions']:
-                if not pont_pret(p,b): ajouter_tache(p,'pont',b)
+                if b['gauche'] in manquants or b['droite'] in manquants or not pont_pret(p,b): ajouter_tache(p,'pont',b)
         elif action in ('clip','pont'):
             b=next((b for b in p['blocs' if action=='clip' else 'transitions'] if b['id']==d.get('element')),None)
             if not b: raise ValueError('Élément introuvable')
             if action=='pont' and not all(courant(x) for x in p['blocs'] if x['id'] in (b['gauche'],b['droite'])): raise ValueError('Générez les deux clips voisins avant leur transition.')
             if any(t['type']=='projet_'+action and t['params'].get('projet')==pid and t['params'].get('element')==b['id'] and t['etat'] in ('en attente','en cours') for t in S.TACHES): return p
+            if action=='clip': verifier_controle_visage(p)
             # Invalider immédiatement les ponts adjacents, même si la génération échoue.
             b['revision']+=1
             p['revision']+=1; sauver(p); ajouter_tache(p,action,b)
         elif action=='export':
             if actif(pid): raise ValueError('Attendez la fin des générations avant d’assembler.')
-            if not all(courant(b) for b in p['blocs']) or not all(pont_pret(p,b) for b in p['transitions']): raise ValueError('Des clips ou transitions restent à générer.')
+            if not all(bloc_pret(b) for b in p['blocs']) or not all(pont_pret(p,b) for b in p['transitions']): raise ValueError('Des clips, audios ou transitions restent à générer.')
             ajouter_tache(p,'export')
         else: raise ValueError('Action inconnue')
         S.sauver(); return p
@@ -174,7 +206,8 @@ def executer(t):
     x=next((b for b in p['blocs']+p['transitions'] if b['id']==t['params'].get('element')),None)
     suffix=f"projet-{pid}-{t.get('generation_id', t['id'])}"
     # Une sortie déjà validée avant l’arrêt du serveur ne repasse pas dans LTX.
-    if x and x.get('clip') == suffix+'.mp4' and (courant(x) if genre=='clip' else pont_pret(p,x)): return
+    if x and x.get('clip') == suffix+'.mp4' and (bloc_pret(x) if genre=='clip' else pont_pret(p,x)): return
+    if genre=='clip': verifier_controle_visage(p)
     if genre in ('clip','pont'):
         if not x: raise ValueError('Élément supprimé')
         # Persist the drawn seed on the task BEFORE inference: restart/retry uses
@@ -186,7 +219,7 @@ def executer(t):
     if genre=='clip':
         if not x: raise ValueError('Bloc supprimé')
         audio=S.ICI/'audios'/f'{suffix}.wav'
-        if not x.get('audio'):
+        if not audio_present(x):
             t['etape']='Audio du bloc'; S.sauver()
             if p['audio_source']:
                 S.lancer(t,['ffmpeg','-v','error','-y','-ss',x['audio_debut'],'-i',S.ICI/'audios'/p['audio_source'],'-t',x['audio_duree'],'-ar','44100','-ac','1',audio])
@@ -267,6 +300,7 @@ def executer(t):
 
 def automatique(t,p):
     """One resumable orchestration task, no dependent jobs left queued on failure."""
+    if moteur(p)!='a2v': S.GESTION_MODELES.verifier_role('lipsync')
     pid=p['id']; etapes=[]
     for i,b in enumerate(p['blocs']):
         etapes.append(('clip',b['id']))
@@ -286,7 +320,7 @@ def automatique(t,p):
         if t.get('annuler'): raise RuntimeError('Génération automatique annulée')
         p=lire(pid)
         x=next((x for x in p['blocs']+p['transitions'] if x['id']==element),None)
-        pret=courant(x) if genre=='clip' else pont_pret(p,x) if genre=='pont' else bool(p.get('export') and p['export']['revision']==p['revision'] and p['export'].get('montage_version')==montage.VERSION and (S.ICI/'videos'/p['export']['fichier']).is_file())
+        pret=bloc_pret(x) if genre=='clip' else pont_pret(p,x) if genre=='pont' else bool(p.get('export') and p['export']['revision']==p['revision'] and p['export'].get('montage_version')==montage.VERSION and (S.ICI/'videos'/p['export']['fichier']).is_file())
         t['automatique']=dict(faits=numero,total=len(etapes));S.sauver()
         if pret: continue
         child=SousTache(id=t['id'],type='projet_'+genre,params=dict(projet=pid,element=element),generation_id=t['id']+'-'+str(element),modeles=t.get('modeles') or S.GESTION_MODELES.selection())

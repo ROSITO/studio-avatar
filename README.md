@@ -113,6 +113,13 @@ Set `STUDIO_MFLUX_BIN` to the folder holding `mflux-generate-flux2[-edit]` and
 `mflux-generate-flux3[-edit]`. Weights already installed elsewhere are detected via
 `STUDIO_IMAGE_MODELS_DIR` (`flux2/klein-4b`, `flux3/klein-mlx-8bit`).
 
+## Windows validation status
+
+Windows support is not yet fully validated on a real Windows host. See the
+[verification matrix](docs/windows-validation.md) for executed checks, corrected
+issues, unsupported integrations and the remaining Windows/GPU tests. Passing
+unit tests or resolving Windows packages does not establish successful inference.
+
 ## Start the interface
 
 Requirements: Python 3.10+, `ffmpeg`, and `ffprobe` on your PATH. The web server

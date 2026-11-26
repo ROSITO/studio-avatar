@@ -38,13 +38,16 @@ jobs:
     runs-on: windows-latest
     env:
       PYTHONUTF8: '1'
+    defaults:
+      run:
+        working-directory: studio avatar
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: studio avatar
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.13'
-      - name: Install FFmpeg
-        run: choco install ffmpeg --yes --no-progress
       - name: Validate Windows bootstrap syntax
         shell: powershell
         run: |
@@ -56,16 +59,19 @@ jobs:
       - name: Test direct downloads without network or WinGet
         shell: powershell
         run: .\test_windows_downloads.ps1
+      - name: Report installation plan without installing models
+        run: call .\installer.bat --plan < NUL
+        shell: cmd
+      - name: Run the Windows prerequisite bootstrap
+        run: call .\installer.bat --engine interface < NUL
+        shell: cmd
       - name: Verify installer selection and batch launcher
         run: python -m unittest test_deploiement test_import_photo -v
-      - name: Report installation plan without installing models
-        run: .\installer.bat --plan < NUL
-        shell: cmd
       - name: Install and verify Windows CPU voice runtime (no model weights)
-        run: .\installer.bat --engine omnivoice --device cpu < NUL
+        run: call .\installer.bat --engine omnivoice --device cpu < NUL
         shell: cmd
       - name: Install and verify separate Windows Qwen runtime (no weights)
-        run: .\installer.bat --engine qwen-tts --device cpu < NUL
+        run: call .\installer.bat --engine qwen-tts --device cpu < NUL
         shell: cmd
   windows-native-imports:
     name: Windows native ${{ matrix.engine }} imports
@@ -87,7 +93,10 @@ jobs:
         run: python -m pip check
       - name: Import native LTX
         if: matrix.engine == 'ltx'
-        run: python -c "import ltx_pipelines.ti2vid_two_stages, ltx_pipelines.a2vid_two_stage"
+        run: python -c "import cv2; assert not cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml').empty(); import ltx_pipelines.ti2vid_two_stages, ltx_pipelines.a2vid_two_stage"
+      - name: Test real Windows LTX staging allocation without CUDA hardware
+        if: matrix.engine == 'ltx'
+        run: python -m unittest test_ltx_windows_runtime -v
       - name: Import native FLUX
         if: matrix.engine == 'image'
         run: python -c "from diffusers import Flux2KleinPipeline"

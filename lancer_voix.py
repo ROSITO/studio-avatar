@@ -12,6 +12,9 @@ import time
 def vue_modele(source, parent):
     """Ignore AppleDouble metadata on external volumes, without copying weights."""
     source=Path(source)
+    if sys.platform=='win32':
+        yield source
+        return
     with tempfile.TemporaryDirectory(prefix='.modele-',dir=parent) as tmp:
         vue=Path(tmp)
         for dossier,dirs,files in os.walk(source):

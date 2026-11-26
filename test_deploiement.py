@@ -35,6 +35,12 @@ class SelectionTest(unittest.TestCase):
         self.assertEqual(installer.plan(self.host(vram=8192, driver='560.0'))['device'], 'cpu')
         self.assertFalse(installer.plan(self.host(vram=4096), device='cuda')['supported'])
 
+    def test_explicit_cpu_omits_visual_engines_on_cuda_host(self):
+        host = self.host(vram=12288)
+        host['nvidia'][0]['compute_cap'] = 8.6
+        self.assertEqual(installer.plan(host)['additional_engines'], ['qwen-tts', 'ltx', 'image'])
+        self.assertEqual(installer.plan(host, device='cpu')['additional_engines'], ['qwen-tts'])
+
     def test_mlx_only_on_apple(self):
         self.assertFalse(installer.plan(self.host(), 'mlx')['supported'])
         self.assertFalse(installer.plan(self.host(), 'animation')['supported'])
@@ -67,6 +73,29 @@ class InstallationRetryTest(unittest.TestCase):
                 run.side_effect = None
                 self.assertEqual(installer.main(), 0)
                 self.assertEqual(json.loads((runtime / '.studio-installation.json').read_text())['device'], 'cpu')
+                installer.venv.EnvBuilder.return_value.create.side_effect = subprocess.CalledProcessError(1, 'ensurepip')
+                with self.assertRaises(subprocess.CalledProcessError):
+                    installer.main()
+                self.assertFalse((runtime / '.studio-installation.json').exists())
+
+    def test_existing_runtime_keeps_its_python_abi(self):
+        host = dict(os='Windows', arch='amd64', ram_gib=32, nvidia=[])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); runtime = root / '.venv-omnivoice'; runtime.mkdir()
+            marker = runtime / '.studio-installation.json'
+            marker.write_text('{"device": "cpu"}', encoding='utf-8')
+            config = runtime / 'pyvenv.cfg'
+            config.write_text('version = 3.12.10\n', encoding='utf-8')
+            with patch.object(installer, 'ROOT', root), patch.object(installer, 'machine', return_value=host), \
+                 patch.object(sys, 'argv', ['installer.py', '--engine', 'omnivoice']), \
+                 patch.object(sys, 'version_info', (3, 13)), \
+                 patch.object(installer.shutil, 'which', return_value='available'), \
+                 patch.object(installer.venv, 'EnvBuilder') as builder:
+                with self.assertRaisesRegex(SystemExit, 'Python 3.12.10'):
+                    installer.main()
+                builder.assert_not_called()
+            self.assertEqual(config.read_text(encoding='utf-8'), 'version = 3.12.10\n')
+            self.assertTrue(marker.is_file())
 
     def test_unmanaged_runtime_is_preserved(self):
         host = dict(os='Windows', arch='amd64', ram_gib=32, nvidia=[])
@@ -89,10 +118,10 @@ class LauncherTest(unittest.TestCase):
             probe.bind(('127.0.0.1', 0)); port = probe.getsockname()[1]
         env = dict(os.environ, STUDIO_PORT=str(port), PYTHONUTF8='1')
         # Test the actual batch entry point on Windows, including a path with spaces.
-        command = ['cmd', '/c', str(ROOT / 'lancer.bat'), '--no-browser'] if os.name == 'nt' else [sys.executable, str(ROOT / 'lancer.py'), '--no-browser']
+        command = ['cmd', '/d', '/c', 'call', str(ROOT / 'lancer.bat'), '--no-browser'] if os.name == 'nt' else [sys.executable, str(ROOT / 'lancer.py'), '--no-browser']
         with tempfile.TemporaryDirectory(prefix='studio launch ') as directory, tempfile.TemporaryFile() as logs:
             uploaded = None
-            process = subprocess.Popen(command, cwd=directory, env=env, stdout=logs, stderr=logs)
+            process = subprocess.Popen(command, cwd=directory, env=env, stdin=subprocess.DEVNULL, stdout=logs, stderr=logs)
             opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
             try:
                 deadline = time.monotonic() + 30
@@ -112,7 +141,13 @@ class LauncherTest(unittest.TestCase):
                         self.assertEqual(response.status, 200)
                 # Exercise the reported workflow: PUT a JPEG, refresh the library,
                 # then fetch the image displayed in Mes avatars.
-                jpeg = subprocess.check_output(['ffmpeg', '-v', 'error', '-f', 'lavfi',
+                ffmpeg = 'ffmpeg'
+                if os.name == 'nt':
+                    dependencies = json.loads((ROOT / 'windows-dependencies.json').read_text(encoding='utf-8'))
+                    portable = Path(os.environ['LOCALAPPDATA']) / 'StudioAvatar' / 'tools' / dependencies['ffmpeg']['directory'] / 'bin' / 'ffmpeg.exe'
+                    if portable.is_file():
+                        ffmpeg = str(portable)
+                jpeg = subprocess.check_output([ffmpeg, '-v', 'error', '-f', 'lavfi',
                     '-i', 'color=c=blue:s=16x16', '-frames:v', '1', '-f', 'image2pipe', '-vcodec', 'mjpeg', '-'])
                 name = f'test-import-{port}.jpg'
                 request = urllib.request.Request(f'http://127.0.0.1:{port}/api/envoi?dossier=sources&nom={name}', data=jpeg, method='PUT')

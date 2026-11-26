@@ -10,13 +10,19 @@ def main():
     signal.signal(signal.SIGTERM,interrompre)
     d=json.loads(Path(sys.argv[1]).read_text())
     import memoire
+    import plateforme
     plafond=memoire.verifier('omnivoice')
     garde=memoire.surveiller(plafond)
     import torch
     import soundfile as sf
     from omnivoice import OmniVoice
-    device='mps' if torch.backends.mps.is_available() else 'cuda' if torch.cuda.is_available() else 'cpu'
+    index=plateforme.index_cuda(torch,'omnivoice-torch')
+    device='mps' if torch.backends.mps.is_available() else 'cpu' if index is None else f'cuda:{index}'
     if device=='mps':torch.mps.set_per_process_memory_fraction(plafond/memoire.physique())
+    elif index is not None:
+        torch.cuda.set_device(index)
+        total=torch.cuda.get_device_properties(index).total_memory
+        torch.cuda.set_per_process_memory_fraction(min(.9,plafond/total),index)
     torch.manual_seed(d['seed'])
     print('Chargement OmniVoice · '+device,flush=True)
     with vue_modele(d['modele'],str(Path(d['sortie']).parent)) as vue:
@@ -29,5 +35,6 @@ def main():
         if isinstance(prise,torch.Tensor):prise=prise.detach().float().cpu().numpy()
         sf.write(d['sortie'],prise,int(getattr(model,'sampling_rate',24000)),subtype='PCM_24')
     print('Prise OmniVoice terminée',flush=True)
+    garde.set()
 
 if __name__=='__main__':main()
