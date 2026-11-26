@@ -51,8 +51,11 @@ def plan(host, engine='auto', device='auto'):
         result.update(supported=False,reason='Sur Apple Silicon, utilisez le moteur Qwen MLX.');return result
     result['environment'] = {'qwen-tts':'.venv-qwen','ltx':'.venv-ltx','image':'.venv-image'}.get(engine,'.venv-omnivoice')
     if automatique and not apple:
-        result['additional_engines']=['qwen-tts']+[e for e,b in [('ltx','ltx-torch'),('image','flux-torch')] if plateforme.backend_compatible(b,host)]
-        result['video']='LTX PyTorch avec lecture sur disque' if 'ltx' in result['additional_engines'] else plateforme.raison_backend('ltx-torch',host)
+        result['additional_engines'] = ['qwen-tts']
+        if chosen == 'cuda':
+            result['additional_engines'] += [e for e, b in [('ltx', 'ltx-torch'), ('image', 'flux-torch')] if plateforme.backend_compatible(b, host)]
+        result['video'] = ('LTX PyTorch avec lecture sur disque' if 'ltx' in result['additional_engines']
+                           else plateforme.raison_backend('ltx-torch', host) or 'LTX PyTorch requiert le backend CUDA.')
     result['note'] = 'CPU: synthese potentiellement lente; aucune garantie de rendu video.' if chosen == 'cpu' else 'Backend a verifier apres installation.'
     return result
 
@@ -92,15 +95,21 @@ def main():
         raise SystemExit(f'Installation incomplete avec un autre backend : renommez {target.name} pour le conserver puis relancez.')
     if marker.exists() and json.loads(marker.read_text(encoding='utf-8')).get('device') != choice['device']:
         raise SystemExit(f'Backend different du runtime existant: renommez {target.name} pour le conserver puis relancez.')
+    config = target / 'pyvenv.cfg'
+    if config.is_file():
+        for line in config.read_text(encoding='utf-8').splitlines():
+            key, _, value = line.partition('=')
+            if key.strip() == 'version' and value.strip().split('.')[:2] != list(map(str, sys.version_info[:2])):
+                raise SystemExit(f'Runtime cree avec Python {value.strip()} : utilisez la meme version majeure/mineure ou renommez {target.name} avant de relancer.')
     target.mkdir(exist_ok=True)
     owner.write_text(json.dumps(dict(engine=engine, device=choice['device'])), encoding='utf-8')
+    # Invalidate the success marker before changing the interpreter or packages.
+    marker.unlink(missing_ok=True)
     venv.EnvBuilder(with_pip=True).create(target)
     python = target / ('Scripts/python.exe' if os.name == 'nt' else 'bin/python')
     base = [str(python), '-m', 'pip', 'install']
     index = 'https://download.pytorch.org/whl/' + ('cu128' if choice['device'] == 'cuda' else 'cpu')
     torch_args = [] if choice['device'] == 'mps' else ['--index-url', index]
-    # On failure the directory is retained for diagnostics, but has no success marker.
-    marker.unlink(missing_ok=True)
     subprocess.run(base + ['torch==2.8.0', 'torchaudio==2.8.0'] + (['torchvision==0.23.0'] if engine in ('ltx','image') else []) + torch_args, check=True)
     subprocess.run(base + ['-r', str(ROOT / {'qwen-tts':'requirements-qwen.txt','ltx':'requirements-ltx.txt','image':'requirements-image.txt'}.get(engine,'requirements-omnivoice.txt'))], check=True)
     subprocess.run([str(python), '-m', 'pip', 'check'], check=True)

@@ -2,6 +2,8 @@
 import json
 from pathlib import Path
 import subprocess
+import sys
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 import studio, voix, test_projets
@@ -55,6 +57,7 @@ class VoixIntegreesTest(unittest.TestCase):
             profils=self.atelier.lire();profils[0]['moteur_origine']='drama3-mlx';self.atelier.sauver(profils)
             with self.assertRaisesRegex(ValueError,'autre moteur'):
                 self.atelier.lot(dict(profil=self.profil['id'],fichiers=[dict(nom='x.txt',texte='Bonjour')]))
+    @unittest.skipIf(sys.platform=='win32','Les liens de la vue AppleDouble sont réservés à Unix')
     def test_vue_modele_exclut_appledouble_sans_copier_les_poids(self):
         from lancer_voix import vue_modele
         source=self.fixture.root/'poids';source.mkdir();(source/'speech_tokenizer').mkdir()
@@ -65,6 +68,13 @@ class VoixIntegreesTest(unittest.TestCase):
             self.assertEqual(len(files),1);self.assertTrue(files[0].is_symlink())
             self.assertEqual(files[0].read_bytes(),b'poids');self.assertEqual(files[0].resolve(),(source/'speech_tokenizer'/'model.safetensors').resolve())
         self.assertFalse(vue.exists())
+    def test_vue_modele_windows_utilise_les_poids_sans_liens(self):
+        from lancer_voix import vue_modele
+        source=self.fixture.root/'poids';source.mkdir()
+        (source/'config.json').write_text('{}',encoding='utf-8')
+        with patch('lancer_voix.sys',SimpleNamespace(platform='win32')),patch.object(Path,'symlink_to',side_effect=PermissionError):
+            with vue_modele(source,self.atelier.root) as vue:
+                self.assertEqual(vue,source)
     def test_profils_persistants_et_validation(self):
         self.assertEqual(voix.Atelier(studio).profil(self.profil['id'])['nom'],'Ma voix')
         with self.assertRaises(ValueError):self.atelier.enregistrer(dict(nom='x',texte='x',reference='../ref.wav'))

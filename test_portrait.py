@@ -39,6 +39,25 @@ class PortraitTest(unittest.TestCase):
     def test_modele_absent(self):
         t = self.tache('flux2-klein4b'); t['modeles']['image']['installe'] = False
         with self.assertRaises(RuntimeError): studio.portrait(t)
+    def test_natif_efface_les_temporaires_apres_arret_et_reprise(self):
+        t = self.tache('flux2-klein4b-torch', nombre=2)
+        final = self.root/'portraits'/'t1-1.png'
+        tmp = self.root/'portraits'/'t1-2.tmp.png'
+        autre = self.root/'portraits'/'t2-3.tmp.png'
+        final.write_bytes(b'rendu existant')
+        autre.touch()
+        def interrompre(*_):
+            tmp.write_bytes(b'partiel')
+            raise RuntimeError('Tâche annulée')
+        with patch.object(studio,'lancer_natif',side_effect=interrompre):
+            with self.assertRaisesRegex(RuntimeError,'annulée'):
+                studio.portrait(t)
+        self.assertFalse(tmp.exists())
+        self.assertTrue(autre.exists())
+        with patch.object(studio,'lancer_natif',side_effect=lambda *_: tmp.touch()):
+            studio.portrait(t)
+        self.assertEqual(t['resultat']['images'],['t1-1.png'])
+        self.assertEqual(final.read_bytes(),b'rendu existant')
     def test_poids_deja_installes_detectes(self):
         ailleurs = self.root / 'ailleurs' / 'flux2' / 'klein-4b'
         s = SimpleNamespace(ICI=self.root, MODELES=self.root / 'weights', TACHES=[], VOICESTUDIO='', LTX='x', MODELES_IMAGE=self.root / 'ailleurs')

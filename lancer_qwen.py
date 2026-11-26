@@ -10,15 +10,18 @@ def generer(d):
     os.environ['HF_HUB_OFFLINE']='1'
     os.environ['TRANSFORMERS_OFFLINE']='1'
     import memoire
+    import plateforme
     plafond=memoire.verifier(d['moteur'])
     garde=memoire.surveiller(plafond)
     import torch
     import soundfile as sf
     from qwen_tts import Qwen3TTSModel
-    device='cuda:0' if torch.cuda.is_available() else 'cpu'
-    if device!='cpu':
-        total=torch.cuda.get_device_properties(0).total_memory
-        torch.cuda.set_per_process_memory_fraction(min(.9,plafond/total))
+    index=plateforme.index_cuda(torch,'qwen-torch')
+    device='cpu' if index is None else f'cuda:{index}'
+    if index is not None:
+        torch.cuda.set_device(index)
+        total=torch.cuda.get_device_properties(index).total_memory
+        torch.cuda.set_per_process_memory_fraction(min(.9,plafond/total),index)
     torch.manual_seed(d['seed'])
     path=Path(d['modele']).resolve()
     if not path.is_dir():raise ValueError('Poids Qwen PyTorch introuvables.')

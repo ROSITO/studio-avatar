@@ -39,5 +39,17 @@ class PlateformeTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'Moteur indisponible'):projets.lancer('id',dict(action='clip'))
             save.assert_not_called()
 
+    def test_legacy_video_requires_musetalk_even_on_a_native_ltx_host(self):
+        handler=SimpleNamespace(path='/api/tache',corps=lambda:b'{"type":"video"}',json=Mock())
+        checks=[]
+        def verifier(role):
+            checks.append(role)
+            if role=='lipsync': raise ValueError('MuseTalk indisponible')
+        with patch.object(studio,'TACHES',[]),patch.object(studio.GESTION_MODELES,'verifier_role',side_effect=verifier):
+            studio.H.do_POST(handler)
+            self.assertEqual(studio.TACHES,[])
+        self.assertEqual(checks,['video','lipsync'])
+        self.assertEqual(handler.json.call_args.args,({'erreur':'MuseTalk indisponible'},400))
+
 
 if __name__=='__main__':unittest.main()

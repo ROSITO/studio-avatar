@@ -36,18 +36,32 @@ function Invoke-PrerequisiteInstaller([string]$Executable, [string[]]$Arguments)
     if ($process.ExitCode -eq 3010) { Write-Host 'Le prerequis signale un redemarrage Windows necessaire.' }
 }
 
+function Test-StudioFFmpeg([string]$Bin) {
+    foreach ($name in @('ffmpeg.exe', 'ffprobe.exe')) {
+        $executable = if ($Bin) { Join-Path $Bin $name } else {
+            (Get-Command $name -CommandType Application -ErrorAction SilentlyContinue).Source
+        }
+        if (-not $executable -or -not (Test-Path -LiteralPath $executable -PathType Leaf)) { return $false }
+        try {
+            & $executable -version >$null 2>$null
+            if ($LASTEXITCODE -ne 0) { return $false }
+        } catch { return $false }
+    }
+    return $true
+}
+
 function Install-PortableFFmpeg($Package, [string]$Cache, [string]$Tools) {
     $folder = Join-Path $Tools $Package.directory
     $bin = Join-Path $folder 'bin'
-    if ((Test-Path (Join-Path $bin 'ffmpeg.exe')) -and (Test-Path (Join-Path $bin 'ffprobe.exe'))) { return $bin }
+    if (Test-StudioFFmpeg $bin) { return $bin }
     $archive = Get-VerifiedDownload $Package $Cache
     New-Item -ItemType Directory -Path $Tools -Force | Out-Null
     $temporary = Join-Path $Tools ('.extract-' + [Guid]::NewGuid().ToString('N'))
     try {
         Expand-Archive -LiteralPath $archive -DestinationPath $temporary
         $unpacked = Join-Path $temporary $Package.directory
-        foreach ($name in @('ffmpeg.exe', 'ffprobe.exe')) {
-            if (-not (Test-Path (Join-Path $unpacked "bin\$name"))) { throw "Archive FFmpeg incomplete : $name absent." }
+        if (-not (Test-StudioFFmpeg (Join-Path $unpacked 'bin'))) {
+            throw 'FFmpeg ou FFprobe ne demarre pas apres extraction.'
         }
         if (Test-Path -LiteralPath $folder) { Remove-Item -LiteralPath $folder -Recurse -Force }
         Move-Item -LiteralPath $unpacked -Destination $folder

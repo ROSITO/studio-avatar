@@ -14,7 +14,8 @@ import sys
 LTX = Path(os.environ.get('STUDIO_LTX_BIN', 'ltx-2-mlx')).expanduser()
 MODELES = Path(os.environ.get('STUDIO_MODELS_DIR', str(Path.home() / '.cache/studio-avatar/models'))).expanduser()
 MUSE_PY = Path(os.environ.get('STUDIO_MUSE_PYTHON', sys.executable)).expanduser()
-CV_PY = Path(os.environ.get('STUDIO_CV_PYTHON', sys.executable)).expanduser()
+_CV_NATIF = ICI / '.venv-ltx' / ('Scripts/python.exe' if os.name=='nt' else 'bin/python')
+CV_PY = Path(os.environ.get('STUDIO_CV_PYTHON', str(_CV_NATIF) if os.name=='nt' and _CV_NATIF.is_file() else sys.executable)).expanduser()
 FFMPEG_BIN = os.environ.get('STUDIO_FFMPEG_BIN', '')
 VOICESTUDIO = os.environ.get('STUDIO_VOICE_URL', 'http://127.0.0.1:3900').rstrip('/')
 PORT = int(os.environ.get('STUDIO_PORT', '8765'))
@@ -72,18 +73,55 @@ TONS = [
 TON_DU_GESTE = {g: k for k, *_, gs in TONS for g in gs} | {'une-main': 'neutre', 'paumes-ouvertes': 'enthousiaste', 'mains-jointes': 'reflechi'}   # anciens clips de bibliothèque (gestes de mains retirés)
 BALISES = {b: k for k, _, _, bs, _ in TONS for b in bs + [k]}
 
-TACHES, VERROU = [], threading.Lock()
+VERROU = threading.Lock()
+VERROU_MEDIAS = threading.Lock()
 EN_COURS = {'proc': None, 'id': None}
 FICHIER_TACHES = ICI / 'taches.json'
-if FICHIER_TACHES.exists():
-    TACHES = json.loads(FICHIER_TACHES.read_text())
-    for t in TACHES:
-        if t['etat'] == 'en cours': t['etat'] = 'en attente'   # reprise après redémarrage : la tâche repart de zéro
+
+def lire_taches(fichier):
+    if not fichier.exists(): return []
+    taches = json.loads(fichier.read_text())
+    for t in taches:
+        if t['etat'] in ('en attente', 'en cours') and t.get('annuler'):
+            t.update(etat='annulée', fin=time.time(), erreur='Tâche annulée')
+        elif t['etat'] == 'en cours':
+            t['etat'] = 'en attente'
+    return taches
+
+TACHES = lire_taches(FICHIER_TACHES)
 
 def sauver():
-    with VERROU: FICHIER_TACHES.write_text(json.dumps(TACHES, ensure_ascii=False, indent=1))
+    with VERROU: modeles.atomique(FICHIER_TACHES, TACHES)
 
-def nom_sur(s): return re.sub(r'[^A-Za-z0-9._-]+', '-', s).strip('-') or 'sans-nom'
+def nom_sur(s):
+    nom = re.sub(r'[^\w.$-]+', '-', s).strip(' .-') or 'sans-nom'
+    if re.fullmatch(r'con|prn|aux|nul|conin\$|conout\$|com[1-9¹²³]|lpt[1-9¹²³]', nom.split('.')[0].casefold()):
+        nom = 'media-' + nom
+    return nom
+
+def chemin_media(dossier, nom):
+    if not isinstance(nom, str) or not nom or nom in ('.', '..') or any(c in nom for c in '/\\:\0'):
+        raise ValueError('Nom de fichier invalide.')
+    return ICI / dossier / nom
+
+def enregistrer_media(dossier, nom, contenu):
+    racine = ICI / dossier
+    nom = re.sub(r'\.tmp\.', '-tmp-', nom_sur(nom), flags=re.IGNORECASE)
+    base, suffixe = Path(nom).stem[:100], Path(nom).suffix
+    with VERROU_MEDIAS:
+        pris = {f.stem.casefold() for f in racine.iterdir()}
+        n, numero = base, 1
+        while n.casefold() in pris:
+            numero += 1
+            n = f'{base}-{numero}'
+        chemin = racine / (n + suffixe)
+        fichier = chemin.open('xb')
+        try:
+            with fichier: fichier.write(contenu)
+        except OSError:
+            chemin.unlink(missing_ok=True)
+            raise
+    return chemin.name
 
 def duree(p):
     r = subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', str(p)], capture_output=True, text=True)
@@ -184,16 +222,21 @@ def portrait(t):
     if not m['installe']: raise RuntimeError('Installez un modèle image (FLUX) dans la page Modèles.')
     refs = []
     for r in p.get('refs', [])[:4]:
-        f = ICI / r['dossier'] / nom_sur(r['nom'])
-        if r['dossier'] not in ('references', 'sources') or not f.is_file(): raise ValueError('Image de référence introuvable')
+        if r['dossier'] not in ('references', 'sources'): raise ValueError('Image de référence introuvable')
+        f = chemin_media(r['dossier'], r['nom'])
+        if not f.is_file(): raise ValueError('Image de référence introuvable')
         refs.append((f, ROLES_REF.get(r.get('role'), ROLES_REF['visage'])))
     consigne = ' '.join(f'Reference image {k + 1}: copy {role}.' for k, (_, role) in enumerate(refs)) + ' ' + BASE_PORTRAIT + ' ' + p.get('prompt', '')
     if 'seeds' not in t: t['seeds'] = [secrets.randbelow(10 ** 7) for _ in range(max(1, min(4, int(p.get('nombre', 4)))))]; sauver()   # même tirage à la reprise
     if m['id']=='flux2-klein4b-torch':
         t['etape']='Portraits FLUX PyTorch';sauver()
-        lancer_natif(t,'image',dict(modele=m['path'],prompt=consigne.strip(),seeds=t['seeds'],
-            references=[str(f) for f,_ in refs],dossier=str(ICI/'portraits'),id=t['id']))
-        images=sorted(f.name for f in (ICI/'portraits').glob(t['id']+'-*.png'))
+        portraits = ICI/'portraits'
+        try:
+            lancer_natif(t,'image',dict(modele=m['path'],prompt=consigne.strip(),seeds=t['seeds'],
+                references=[str(f) for f,_ in refs],dossier=str(portraits),id=t['id']))
+        finally:
+            for f in portraits.glob(t['id']+'-*.tmp.png'): f.unlink(missing_ok=True)
+        images=sorted(f.name for f in portraits.glob(t['id']+'-*.png'))
         if not images:raise RuntimeError('Aucun portrait natif produit. Consultez le journal.')
         t['resultat']=dict(images=images,modele=m['id'],consigne=consigne.strip());return
     flux3 = m['id'].startswith('flux3')
@@ -245,6 +288,7 @@ def faire(t):
         musetalk(t, ICI / dossier / video, ICI / 'audios' / p['audio'], out, int(p.get('bbox_shift', 0)))
         t['resultat'] = meta(out, video=p['video'], audio=p['audio'])
     elif t['type'] == 'video':   # parcours complet : texte balisé -> voix par segment -> timeline des situations -> lipsync
+        GESTION_MODELES.verifier_role('lipsync')
         nom = nom_sur(p['nom']); segs = segments(p.get('texte', '')); t['etape'] = 'Création de la voix'
         if p.get('audio'):
             audio = p['audio']; total = duree(ICI / 'audios' / audio)
@@ -267,10 +311,10 @@ def faire(t):
         t['resultat'] = meta(out, avatar=p['avatar'], audio=audio, texte=p.get('texte', ''), segments=segs, plan=[dict(m, fichier=Path(m['fichier']).name) for m in plan])
     elif t['type'] == 'variante':   # une variante de plus pour une situation (clip + sa transition)
         src, ton = p['avatar'], p['ton']; cle = next(gs for k, *_, gs in TONS if k == ton)[0] if ton != 'repos' else 'repos'
-        seed = int(time.time()) % 1000; base = Path(src).stem
+        seed = int(time.time()) % 1000; base = nom_sur(Path(src).stem)
         t2 = dict(t, params=dict(source=src, geste=REPOS if ton == 'repos' else GESTES[cle], nom=f'{base}-{cle}-v{seed}', seed=seed, images=97, ton=ton, ancre_fin=ton == 'repos'))
         faire(dict(t2, type='clip'))
-        if ton != 'repos': faire(dict(t, params=dict(clip=f'{base}-{cle}-v{seed}.mp4', images=33)))
+        if ton != 'repos': faire(dict(t, type='pont', params=dict(clip=f'{base}-{cle}-v{seed}.mp4', images=33)))
 
 # Mode sur mesure, en PETITS BLOCS INDÉPENDANTS : chaque phrase = un bloc qui part de la photo d'origine
 # (jamais d'une image générée : aucune dérive, quelle que soit la longueur), fait le geste de son ton, puis une
@@ -418,7 +462,7 @@ def concat(t, morceaux, out):
 def preparation(src):
     """Situations d'un avatar : un geste par ton (deux pour « neutre »), leurs transitions, et un clip de repos.
     Ce qui existe déjà (clip ou transition) n'est pas refait. ≈ 80 min pour un avatar neuf."""
-    base, taches, k = Path(src).stem, [], 0
+    base, taches, k = nom_sur(Path(src).stem), [], 0
     cles = [g for *_, gs in TONS for g in gs]
     for g in cles:
         if not (ICI / 'clips' / f'{base}-{g}.mp4').exists():
@@ -472,9 +516,12 @@ def fichiers():
     for d in DOSSIERS:
         l = []
         for f in sorted((ICI / d).iterdir(), key=lambda f: -f.stat().st_mtime):
-            if not f.is_file() or f.name.startswith(('.', 'fin-')) or (f.suffix.lower() == '.json' or (f.suffix.lower() == '.jpg' and d not in ('sources', 'portraits', 'references'))) or '.tmp.' in f.name or f.name.endswith('-16k.wav') or '-25fps' in f.name: continue
+            if not f.is_file() or f.name.startswith('.') or '.tmp.' in f.name: continue
+            if d == 'ponts' and f.name.startswith('fin-'): continue
+            if d == 'lipsync' and (f.name.endswith('-16k.wav') or '-25fps' in f.name): continue
+            if f.suffix.lower() == '.json' or (f.suffix.lower() == '.jpg' and d not in ('sources', 'portraits', 'references')): continue
             m = f.with_suffix('.json'); l.append(dict(nom=f.name, meta=json.loads(m.read_text()) if m.exists() else {},
-                                                  apercu=f.with_suffix('.jpg').exists(), duree=round(duree_cache(f), 2) if f.suffix in ('.mp4', '.mov', '.m4v', '.webm', '.wav', '.mp3', '.m4a') else None))
+                                                  apercu=f.with_suffix('.jpg').exists(), duree=round(duree_cache(f), 2) if f.suffix.lower() in ('.mp4', '.mov', '.m4v', '.webm', '.wav', '.mp3', '.m4a', '.flac', '.ogg') else None))
         out[d] = l
     return out
 
@@ -542,9 +589,8 @@ class H(BaseHTTPRequestHandler):
                     return self.json(dict(erreur='Vidéo MP4, MOV ou WebM de 1 Go maximum requise.'),400)
             if not q.get('nom', [''])[0]:
                 return self.json(dict(erreur='Nom de fichier requis.'),400)
-            n = nom_sur(q['nom'][0])
             try:
-                (ICI / q['dossier'][0] / n).write_bytes(self.corps())
+                n = enregistrer_media(q['dossier'][0], q['nom'][0], self.corps())
             except (OSError, ValueError):
                 return self.json(dict(erreur="Impossible d’enregistrer le fichier. Vérifiez les droits d’écriture et l’espace disque du dossier Studio Avatar."),500)
             return self.json(dict(nom=n))
@@ -602,6 +648,7 @@ class H(BaseHTTPRequestHandler):
             if d.get('type') not in ('clip', 'pont', 'sequence', 'lipsync', 'video', 'avatar', 'variante', 'portrait'): return self.json(dict(erreur='type inconnu'), 400)
             try:
                 if d['type']!='sequence':GESTION_MODELES.verifier_role('image' if d['type']=='portrait' else 'lipsync' if d['type']=='lipsync' else 'video')
+                if d['type']=='video':GESTION_MODELES.verifier_role('lipsync')
             except ValueError as exc:return self.json(dict(erreur=str(exc)),400)
             if d['type'] == 'avatar': nouvelles = preparation(d['params']['source'])
             else: nouvelles = [d]
@@ -616,18 +663,31 @@ class H(BaseHTTPRequestHandler):
                 if EN_COURS['proc']: EN_COURS['proc'].terminate()
             sauver(); return self.json(dict(ok=True))
         if u.path == '/api/supprimer_avatar':   # la photo et tous ses mouvements / transitions
-            src = nom_sur(d.get('nom', ''))
-            for c in clips_avatar(src):
-                for x in (ICI / 'clips' / c, ICI / 'ponts' / f'pont-{c}'):
-                    for y in (x, x.with_suffix('.json'), x.with_suffix('.jpg')): y.unlink(missing_ok=True)
-            (ICI / 'sources' / src).unlink(missing_ok=True); return self.json(dict(ok=True))
+            try:
+                f = chemin_media('sources', d.get('nom'))
+                for c in clips_avatar(f.name):
+                    for x in (ICI / 'clips' / c, ICI / 'ponts' / f'pont-{c}'):
+                        for y in (x, x.with_suffix('.json'), x.with_suffix('.jpg')): y.unlink(missing_ok=True)
+                f.unlink(missing_ok=True)
+            except (ValueError, OSError) as e: return self.json(dict(erreur=str(e)),400)
+            return self.json(dict(ok=True))
         if u.path == '/api/portraits/utiliser':   # un portrait généré devient une photo d'avatar
-            f = ICI / 'portraits' / nom_sur(d.get('fichier', ''))
-            if not f.is_file(): return self.json(dict(erreur='Portrait introuvable'), 400)
-            n = nom_sur(d.get('nom') or f.stem) + '.png'; shutil.copy(f, ICI / 'sources' / n); return self.json(dict(nom=n))
+            try:
+                f = chemin_media('portraits', d.get('fichier'))
+                if not f.is_file(): raise ValueError('Portrait introuvable')
+                n = enregistrer_media('sources', (d.get('nom') or f.stem) + '.png', f.read_bytes())
+            except (ValueError, OSError) as e: return self.json(dict(erreur=str(e)),400)
+            return self.json(dict(nom=n))
         if u.path == '/api/supprimer' and d.get('dossier') in DOSSIERS:
-            f = ICI / d['dossier'] / nom_sur(d.get('nom', ''))
-            for x in (f, f.with_suffix('.json'), f.with_suffix('.jpg')): x.unlink(missing_ok=True)
+            dossier = d['dossier']
+            try:
+                f = chemin_media(dossier, d.get('nom'))
+                f.unlink(missing_ok=True)
+                if not any(x.stem == f.stem and x.suffix.lower() not in ('.json', '.jpg') for x in f.parent.iterdir()):
+                    f.with_suffix('.json').unlink(missing_ok=True)
+                    if dossier in ('clips', 'ponts', 'sequences', 'lipsync', 'videos'):
+                        f.with_suffix('.jpg').unlink(missing_ok=True)
+            except (ValueError, OSError) as e: return self.json(dict(erreur=str(e)),400)
             return self.json(dict(ok=True))
         self.send_error(404)
 

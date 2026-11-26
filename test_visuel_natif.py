@@ -50,6 +50,17 @@ class NativeVisualTest(unittest.TestCase):
         for frames in (10,9999):
             with self.assertRaises(ValueError):lancer_visuel.arguments_ltx(dict(data,frames=frames))
 
+    def test_windows_ltx_staging_uses_anonymous_mapping_without_unix_flags(self):
+        def windows_mmap(fileno,length):return fileno,length
+        windows=SimpleNamespace(mmap=windows_mmap)
+        buffers=SimpleNamespace(mmap=windows)
+        with patch.dict('sys.modules',{'mmap':windows,'ltx_core':SimpleNamespace(),
+                                      'ltx_core.loader':SimpleNamespace(buffers=buffers)}):
+            lancer_visuel.adapter_mmap_ltx_windows()
+        flags=buffers.mmap.MAP_PRIVATE|buffers.mmap.MAP_ANONYMOUS
+        self.assertEqual(buffers.mmap.mmap(-1,2**21,flags=flags),(-1,2**21))
+        self.assertIs(windows.mmap,windows_mmap)
+
     def test_studio_preserves_speech_and_atomically_replaces_clip(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);out=root/'clip.mp4';out.write_bytes(b'old clip')
@@ -81,8 +92,10 @@ class NativeVisualTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             image=Mock();image.save.side_effect=lambda path:Path(path).write_bytes(b'png')
             pipe=Mock(return_value=SimpleNamespace(images=[image]));loader=Mock();loader.from_pretrained.return_value=pipe
-            torch=SimpleNamespace(cuda=SimpleNamespace(is_available=lambda:True,get_device_capability=lambda i:(8,6),
-                get_device_properties=lambda i:SimpleNamespace(total_memory=16*memoire.GIB),set_per_process_memory_fraction=Mock()),
+            cuda=SimpleNamespace(is_available=lambda:True,device_count=lambda:3,set_device=Mock(),
+                get_device_properties=lambda i:SimpleNamespace(total_memory=(4 if i==0 else 16)*memoire.GIB,major=7 if i==1 else 8),
+                set_per_process_memory_fraction=Mock())
+            torch=SimpleNamespace(cuda=cuda,
                 bfloat16='bf16',Generator=lambda device:SimpleNamespace(manual_seed=lambda seed:'generator'))
             d=dict(type='image',modele='weights',references=[],seeds=[42],prompt='hello',id='test',dossier=directory)
             with patch.dict('sys.modules',{'torch':torch,'diffusers':SimpleNamespace(Flux2KleinPipeline=loader),'PIL':SimpleNamespace(Image=Mock())}), \
@@ -90,7 +103,9 @@ class NativeVisualTest(unittest.TestCase):
                  patch.object(plateforme,'raison_backend',return_value=''),patch.object(memoire,'disponible',return_value=20*memoire.GIB),patch.object(memoire,'surveiller',return_value=Mock()):
                 lancer_visuel.generer(d)
             self.assertTrue(loader.from_pretrained.call_args.kwargs['local_files_only'])
-            pipe.enable_sequential_cpu_offload.assert_called_once_with(device='cuda')
+            cuda.set_device.assert_called_once_with(2)
+            cuda.set_per_process_memory_fraction.assert_called_once_with(.5,2)
+            pipe.enable_sequential_cpu_offload.assert_called_once_with(device='cuda:2')
             self.assertEqual((Path(directory)/'test-42.png').read_bytes(),b'png')
             self.assertFalse(list(Path(directory).glob('*.tmp.png')))
 

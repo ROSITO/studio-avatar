@@ -104,7 +104,7 @@ def configurer_mlx(mx,moteur):
 def danger_systeme(niveau=None):
     # A warning alone may persist after a previous job; retain a real RAM reserve.
     niveau=pression() if niveau is None else niveau
-    return niveau>=4 or (niveau>=2 and disponible()<reserve_systeme())
+    return niveau>=4 or ((niveau>=2 or platform.system()!='Darwin') and disponible()<reserve_systeme())
 
 def decrire_arret(log):
     lignes=re.findall(r'Protection m[ée]moire (?:externe|interne) : ([^\n]+)',log)
@@ -170,7 +170,7 @@ def attendre(process,plafond,log):
             systeme_en_danger=danger_systeme(niveau)
             danger=utilise>plafond or systeme_en_danger
             raison=('pression mémoire globale critique (macOS '+str(niveau)+')' if niveau>=4 else
-                    f'réserve système inférieure à {reserve_systeme()/GIB:g} Gio (macOS {niveau})' if systeme_en_danger else 'budget dépassé')
+                    f'réserve système inférieure à {reserve_systeme()/GIB:g} Gio ({platform.system()} {niveau})' if systeme_en_danger else 'budget dépassé')
         except (OSError,ValueError,subprocess.SubprocessError):
             if process.poll() is not None:continue
             danger=True;raison='mesure mémoire indisponible'  # Fail closed.

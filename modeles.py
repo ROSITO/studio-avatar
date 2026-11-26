@@ -53,9 +53,9 @@ CATALOGUE += [dict(id='wan-animate2', nom='Wan-Animate-2 · transfert de perform
 # Native PyTorch checkpoints, kept separate from MLX weight conversions.
 CATALOGUE += [dict(id=mid, nom=nom, role='synthese', ram=ram, backend='qwen-torch',
     description='Clonage Qwen-TTS officiel PyTorch · Windows/Linux x64 · CPU ou NVIDIA · Apache 2.0.',
-    required=['config.json','model.safetensors','tokenizer_config.json','vocab.json','merges.txt',
-              'speech_tokenizer/config.json','speech_tokenizer/model.safetensors',
-              'speech_tokenizer/preprocessor_config.json'],
+    required=['config.json','generation_config.json','preprocessor_config.json','model.safetensors',
+              'tokenizer_config.json','vocab.json','merges.txt','speech_tokenizer/config.json',
+              'speech_tokenizer/configuration.json','speech_tokenizer/model.safetensors','speech_tokenizer/preprocessor_config.json'],
     sources=[dict(repo=repo, include=['*.json','*.safetensors','*.txt','LICENSE*'],prefix='')])
     for mid,nom,repo,ram in [
         ('qwen3-tts-torch','Qwen3-TTS 0.6B · PyTorch','Qwen/Qwen3-TTS-12Hz-0.6B-Base',8),
@@ -63,7 +63,9 @@ CATALOGUE += [dict(id=mid, nom=nom, role='synthese', ram=ram, backend='qwen-torc
 
 
 LTX_NATIVE_FILES=['ltx-2.3-22b-dev.safetensors','ltx-2.3-22b-distilled-lora-384-1.1.safetensors','ltx-2.3-spatial-upscaler-x2-1.1.safetensors']
-GEMMA_NATIVE_FILES=['config.json','model.safetensors.index.json','tokenizer.json']+['model-%05d-of-00005.safetensors'%i for i in range(1,6)]
+GEMMA_NATIVE_FILES=['config.json','generation_config.json','model.safetensors.index.json','tokenizer.json',
+    'tokenizer_config.json','tokenizer.model','processor_config.json','preprocessor_config.json',
+    'special_tokens_map.json','added_tokens.json','chat_template.json']+['model-%05d-of-00005.safetensors'%i for i in range(1,6)]
 CATALOGUE += [dict(id='ltx23-torch',nom='LTX-2.3 · PyTorch CUDA',role='video',ram=32,backend='ltx-torch',
     description='Intégration expérimentale du moteur officiel : clips, transitions et vidéo parlante. Lecture des poids sur disque. Licence LTX-2 Community.',
     required=LTX_NATIVE_FILES,sources=[dict(repo='Lightricks/LTX-2.3',include=LTX_NATIVE_FILES,prefix='')]),
@@ -72,7 +74,12 @@ CATALOGUE += [dict(id='ltx23-torch',nom='LTX-2.3 · PyTorch CUDA',role='video',r
     required=GEMMA_NATIVE_FILES,sources=[dict(repo='google/gemma-3-12b-it-qat-q4_0-unquantized',include=['*.json','*.model','*.safetensors'],prefix='')]),
     dict(id='flux2-klein4b-torch',nom='FLUX.2 Klein 4B · PyTorch',role='image',ram=32,backend='flux-torch',
     description='Portraits et édition avec références. Intégration Diffusers expérimentale, offload CPU. Apache 2.0.',
-    required=['model_index.json','transformer/diffusion_pytorch_model.safetensors','vae/diffusion_pytorch_model.safetensors','text_encoder/model.safetensors.index.json','tokenizer/tokenizer.json'],
+    required=['model_index.json','scheduler/scheduler_config.json','transformer/config.json',
+        'transformer/diffusion_pytorch_model.safetensors','vae/config.json','vae/diffusion_pytorch_model.safetensors',
+        'text_encoder/config.json','text_encoder/generation_config.json','text_encoder/model.safetensors.index.json',
+        'text_encoder/model-00001-of-00002.safetensors','text_encoder/model-00002-of-00002.safetensors',
+        'tokenizer/tokenizer.json','tokenizer/tokenizer_config.json','tokenizer/vocab.json','tokenizer/merges.txt',
+        'tokenizer/special_tokens_map.json','tokenizer/added_tokens.json','tokenizer/chat_template.jinja'],
     sources=[dict(repo='black-forest-labs/FLUX.2-klein-4B',include=['model_index.json','scheduler/*','text_encoder/*','tokenizer/*','transformer/*','vae/*','LICENSE*'],prefix='')])]
 
 def backend(e):

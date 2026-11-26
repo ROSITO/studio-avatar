@@ -36,10 +36,24 @@ def detecter():
                 ram_gib=ram_gib(), nvidia=nvidia())
 
 
+def minimum_cuda_mib(backend):
+    return 11776 if backend=='flux-torch' else 7680
+
+
+def index_cuda(torch,backend):
+    if not torch.cuda.is_available():return None
+    minimum=minimum_cuda_mib(backend)*1024**2
+    for index in range(torch.cuda.device_count()):
+        gpu=torch.cuda.get_device_properties(index)
+        if gpu.total_memory>=minimum and (backend not in ('ltx-torch','flux-torch') or gpu.major>=8):
+            return index
+    return None
+
+
 def appareil_torch(host):
     if host['os'] == 'Darwin' and host['arch'] == 'arm64':
         return 'mps'
-    if any(g['vram_mib'] >= 7680 and int(g['driver'].split('.')[0]) >= 570 for g in host['nvidia']):
+    if any(g['vram_mib'] >= minimum_cuda_mib('qwen-torch') and int(g['driver'].split('.')[0]) >= 570 for g in host['nvidia']):
         return 'cuda'
     return 'cpu'
 
@@ -54,7 +68,7 @@ def backend_compatible(backend, host=None):
         return x64
     if backend in ('ltx-torch','flux-torch'):
         # Nominal 8/12 GB cards and 32 GB RAM report slightly less after hardware reservations.
-        minimum=7680 if backend=='ltx-torch' else 11776
+        minimum=minimum_cuda_mib(backend)
         return x64 and host['ram_gib']>=30 and any(g['vram_mib']>=minimum and int(g['driver'].split('.')[0])>=570 and float(g.get('compute_cap') or 0)>=8 for g in host['nvidia'])
     return apple if backend in ('ltx-mlx', 'mlx-audio', 'mflux', 'wan-mps', 'musetalk-mps') else False
 
